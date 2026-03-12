@@ -771,7 +771,6 @@ def _build_deep_dive_sections(by_page: dict[str, list[MeasurementResult]]) -> st
             "<table><thead><tr><th>Metric</th><th>Value</th></tr></thead>"
             f"<tbody>{metric_rows}</tbody></table>"
         )
-        parts.append("<p><em>Notes</em><br><span class=\"na\">—</span></p>")
     return "\n".join(parts)
 
 
