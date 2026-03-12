@@ -63,13 +63,13 @@ TABS: dict[str, TabConfig] = {
     "Transaction Policy": TabConfig(
         path="/transaction-policy",
         supports_spinner=False,
-        supports_table=False,
+        supports_table=True,
         ready_selector='[data-test-id="policies-rule-row-root"]',
     ),
     "AML Policy": TabConfig(
         path="/aml-policy",
         supports_spinner=False,
-        supports_table=False,
+        supports_table=True,
         ready_selector='[data-test-id="policies-rule-row-root"]',
     ),
     "User Management": TabConfig(
