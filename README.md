@@ -224,6 +224,18 @@ This writes the same benchmark outputs (diff JSON/CSV, main HTML with benchmark 
 
 When using `--iterations` > 1, each flow is run multiple times (after discarding `--warmup` runs). Results are aggregated: one row per (page, action) with statistics over the measured samples (median, P95, P99, std dev). The detailed metrics report files reflect these aggregated statistics.
 
+### Industry benchmarks
+
+The reports use the following targets. **Values above the target are shown in red** in the Performance Summary, Deep Dive, detailed metrics report, and detailed benchmark report.
+
+| Metric | Target |
+|--------|--------|
+| TTFB | < 500 ms |
+| LCP | < 2.5 s |
+| Page Load | < 3 s |
+| Table Render | < 200 ms |
+| UI Action (sort/search) | < 300 ms |
+
 ### What each metric measures
 
 **Metrics (per action):**

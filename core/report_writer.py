@@ -32,8 +32,15 @@ __all__ = [
 REPORTS_BASE = "reports"
 BASE_URL = "https://app.preprod.fordefi.com"
 
-# Actions exceeding this time (ms) are marked in red in the summary table.
-MAX_ACTION_TIME_MS = 2000  # 2 seconds
+# Industry-standard benchmark targets (ms). Values above these are marked in red.
+BENCHMARK_TARGETS_MS = {
+    "ttfb": 500,
+    "lcp": 2500,
+    "page_load": 3000,
+    "table_render": 200,
+    "sort": 300,
+    "search": 300,
+}
 
 _cached_default_run_dir: str | None = None
 
@@ -177,9 +184,12 @@ def _build_detailed_metrics_html(
             d = m.to_dict()
             if d["sample_count"] == 0:
                 continue
+            max_ms = _benchmark_max_ms_for_metric(r.action, m.name)
+            median_val = d["median_ms"]
+            median_class = " over-max" if (max_ms is not None and median_val > max_ms) else ""
             rows.append(
                 f"<tr><td>{_h(d['name'])}</td><td>{d['sample_count']}</td>"
-                f"<td>{d['median_ms']}</td><td>{d['p95_ms']}</td><td>{d['p99_ms']}</td>"
+                f"<td class=\"{median_class.strip() or ''}\">{median_val}</td><td>{d['p95_ms']}</td><td>{d['p99_ms']}</td>"
                 f"<td>{d['std_dev_ms']}</td><td>{d['min_ms']}</td><td>{d['max_ms']}</td></tr>"
             )
         table_body = "\n".join(rows) if rows else "<tr><td colspan=\"8\">No metrics recorded (wall_clock only for in-page actions).</td></tr>"
@@ -234,6 +244,7 @@ th, td {{ border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; }}
 th {{ background: #f0f0f0; font-weight: 600; }}
 tr:nth-child(even) {{ background: #f9f9f9; }}
 ul {{ margin: 0.5rem 0; padding-left: 1.5rem; }}
+.over-max {{ color: #c00; font-weight: 600; }}
 </style>
 </head>
 <body>
@@ -241,6 +252,7 @@ ul {{ margin: 0.5rem 0; padding-left: 1.5rem; }}
 <p><em>Generated: {exec_date}</em></p>
 {run_config_p}
 <p>Statistics across runs: sample count, median, P95, P99, std dev, min, max (ms unless noted).</p>
+<p><strong>Industry benchmarks:</strong> Median values above the following targets are shown in <span class="over-max">red</span>. TTFB &lt; 500 ms, LCP &lt; 2.5 s, Page Load &lt; 3 s, Table Render &lt; 200 ms, UI Action (sort/search) &lt; 300 ms.</p>
 {metrics_explanation}
 <hr>
 {body_sections}
@@ -713,11 +725,31 @@ REPORT_TEMPLATE_PATH = os.path.join(
 )
 
 
-def _summary_cell_class(median_ms: float | None) -> str:
-    """Return CSS class for summary table cell: 'na' if no value, 'over-max' if over MAX_ACTION_TIME_MS, else ''."""
+def _benchmark_max_ms_for_metric(action: str, metric_name: str) -> float | None:
+    """Return industry benchmark target (ms) for (action, metric_name), or None."""
+    if metric_name == "ttfb":
+        return BENCHMARK_TARGETS_MS.get("ttfb")
+    if metric_name == "lcp":
+        return BENCHMARK_TARGETS_MS.get("lcp")
+    if metric_name == "load_event_end" or (
+        metric_name == "wall_clock" and action in ("nav_tab_load", "page_load")
+    ):
+        return BENCHMARK_TARGETS_MS.get("page_load")
+    if metric_name == "wall_clock" and action == "table_render":
+        return BENCHMARK_TARGETS_MS.get("table_render")
+    if metric_name == "wall_clock" and action == "sort":
+        return BENCHMARK_TARGETS_MS.get("sort")
+    if metric_name == "wall_clock" and action == "search":
+        return BENCHMARK_TARGETS_MS.get("search")
+    return None
+
+
+def _summary_cell_class(median_ms: float | None, max_ms: float | None = None) -> str:
+    """Return CSS class: 'na' if no value, 'over-max' if over max_ms (or action benchmark), else ''."""
     if median_ms is None:
         return "na"
-    if median_ms > MAX_ACTION_TIME_MS:
+    threshold = max_ms if max_ms is not None else None
+    if threshold is not None and median_ms > threshold:
         return "over-max"
     return ""
 
@@ -734,10 +766,10 @@ def _build_performance_summary_rows(by_page: dict[str, list[MeasurementResult]])
         table_median = _get_action_median_ms(page_rows, "table_render") if page_rows else None
         sort_median = _get_action_median_ms(page_rows, "sort") if page_rows else None
         search_median = _get_action_median_ms(page_rows, "search") if page_rows else None
-        load_class = _summary_cell_class(load_median)
-        table_class = _summary_cell_class(table_median)
-        sort_class = _summary_cell_class(sort_median)
-        search_class = _summary_cell_class(search_median)
+        load_class = _summary_cell_class(load_median, BENCHMARK_TARGETS_MS.get("page_load"))
+        table_class = _summary_cell_class(table_median, BENCHMARK_TARGETS_MS.get("table_render"))
+        sort_class = _summary_cell_class(sort_median, BENCHMARK_TARGETS_MS.get("sort"))
+        search_class = _summary_cell_class(search_median, BENCHMARK_TARGETS_MS.get("search"))
         err_count = _get_console_errors(page_rows) if page_rows else 0
         rows.append(
             f"<tr><td>{_h(page)}</td><td class=\"{load_class}\">{_h(load_time)}</td>"
@@ -757,22 +789,27 @@ def _build_deep_dive_sections(by_page: dict[str, list[MeasurementResult]]) -> st
         pagination_val = _get_pagination_time(page_rows) if page_rows else "—"
         sort_val = _get_sort_time(page_rows) if page_rows else "—"
         search_val = _get_search_time(page_rows) if page_rows else "—"
-        table_class = "" if table_val != "—" else "na"
+        load_median = _get_action_median_ms(page_rows, ("nav_tab_load", "page_load")) if page_rows else None
+        table_median = _get_action_median_ms(page_rows, "table_render") if page_rows else None
+        sort_median = _get_action_median_ms(page_rows, "sort") if page_rows else None
+        search_median = _get_action_median_ms(page_rows, "search") if page_rows else None
+        load_class = _summary_cell_class(load_median, BENCHMARK_TARGETS_MS.get("page_load"))
+        table_class = _summary_cell_class(table_median, BENCHMARK_TARGETS_MS.get("table_render"))
         pagination_class = "" if pagination_val != "—" else "na"
-        sort_class = "" if sort_val != "—" else "na"
-        search_class = "" if search_val != "—" else "na"
+        sort_class = _summary_cell_class(sort_median, BENCHMARK_TARGETS_MS.get("sort"))
+        search_class = _summary_cell_class(search_median, BENCHMARK_TARGETS_MS.get("search"))
         err_count = _get_console_errors(page_rows) if page_rows else 0
         parts.append(f"<h3>{_h(page)}</h3>")
         if page == "Transaction Policy":
             metric_rows = (
-                f"<tr><td>Page Load</td><td>{_h(load_val)}</td></tr>"
+                f"<tr><td>Page Load</td><td class=\"{load_class}\">{_h(load_val)}</td></tr>"
                 f"<tr><td>Table Render</td><td class=\"{table_class}\">{_h(table_val)}</td></tr>"
                 f"<tr><td>Pagination (next-page)</td><td class=\"{pagination_class}\">{_h(pagination_val)}</td></tr>"
                 f"<tr><td>Console Errors</td><td>{err_count}</td></tr>"
             )
         else:
             metric_rows = (
-                f"<tr><td>Page Load</td><td>{_h(load_val)}</td></tr>"
+                f"<tr><td>Page Load</td><td class=\"{load_class}\">{_h(load_val)}</td></tr>"
                 f"<tr><td>Table Render</td><td class=\"{table_class}\">{_h(table_val)}</td></tr>"
                 f"<tr><td>Pagination (next-page)</td><td class=\"{pagination_class}\">{_h(pagination_val)}</td></tr>"
                 f"<tr><td>Sort</td><td class=\"{sort_class}\">{_h(sort_val)}</td></tr>"
@@ -832,8 +869,10 @@ def _build_detailed_benchmark_html(comparisons: list[RowComparison]) -> str:
             if m.baseline_median == 0 and m.current_median == 0:
                 continue
             status_class = f" status-{m.status}" if m.status in ("regressed", "improved") else ""
+            max_ms = _benchmark_max_ms_for_metric(c.action, m.name)
+            current_class = " over-max" if (max_ms is not None and m.current_median > max_ms) else ""
             metric_rows.append(
-                f"<tr><td>{_h(m.name)}</td><td>{m.baseline_median:.2f}</td><td>{m.current_median:.2f}</td>"
+                f"<tr><td>{_h(m.name)}</td><td>{m.baseline_median:.2f}</td><td class=\"{current_class.strip()}\">{m.current_median:.2f}</td>"
                 f"<td>{m.delta:+.2f}</td><td>{m.pct_change:+.1f}%</td><td class=\"{status_class}\">{_h(m.status)}</td></tr>"
             )
         if not metric_rows:
@@ -866,6 +905,7 @@ th {{ background: #f0f0f0; font-weight: 600; }}
 tr:nth-child(even) {{ background: #f9f9f9; }}
 .status-regressed {{ color: #c00; font-weight: 600; }}
 .status-improved {{ color: #080; font-weight: 600; }}
+.over-max {{ color: #c00; font-weight: 600; }}
 </style>
 </head>
 <body>
