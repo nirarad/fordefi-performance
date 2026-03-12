@@ -22,7 +22,6 @@ artifacts/screenshots/*
 artifacts/traces/*
 artifacts/har/*
 artifacts/json/*
-artifacts/csv/*
 artifacts/html/*
 reports/*.md
 reports/*.html

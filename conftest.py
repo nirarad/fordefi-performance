@@ -61,11 +61,14 @@ def results_collector(request):
 
 @pytest.fixture(scope="session")
 def browser_context_args(browser_context_args):
+    os.makedirs(os.path.join("artifacts", "har"), exist_ok=True)
     context_args = {
         **browser_context_args,
         "viewport": {"width": 1280, "height": 720},
         "ignore_https_errors": True,
         "base_url": BASE_URL,
+        # Single HAR file capturing the authenticated session
+        "record_har_path": os.path.join("artifacts", "har", "session.har"),
     }
     if os.path.exists(AUTH_STATE_PATH):
         context_args["storage_state"] = AUTH_STATE_PATH
@@ -118,10 +121,16 @@ def _auth_context_session(
     browser_context_args: dict,
 ) -> Generator[BrowserContext, None, None]:
     """One authenticated browser context for the whole run (used with --single-session)."""
+    from core.evidence import start_tracing, stop_tracing
+
     context = browser.new_context(**browser_context_args)
-    yield context
-    context.close()
-    logger.info("Closed authenticated session context")
+    start_tracing(context, "auth_session")
+    try:
+        yield context
+    finally:
+        stop_tracing(context, "auth", "session")
+        context.close()
+        logger.info("Closed authenticated session context")
 
 
 @pytest.fixture(scope="module")
@@ -130,10 +139,16 @@ def _auth_context_module(
     browser_context_args: dict,
 ) -> Generator[BrowserContext, None, None]:
     """One authenticated browser context per test file — closed when the file ends."""
+    from core.evidence import start_tracing, stop_tracing
+
     context = browser.new_context(**browser_context_args)
-    yield context
-    context.close()
-    logger.info("Closed authenticated context")
+    start_tracing(context, "auth_module")
+    try:
+        yield context
+    finally:
+        stop_tracing(context, "auth", "module")
+        context.close()
+        logger.info("Closed authenticated context")
 
 
 @pytest.fixture()
@@ -166,25 +181,37 @@ def page(
 @pytest.fixture(scope="session")
 def _unauth_context_session(browser: Browser) -> Generator[BrowserContext, None, None]:
     """One unauthenticated browser context for the whole run (used with --single-session)."""
+    from core.evidence import start_tracing, stop_tracing
+
     context = browser.new_context(
         viewport={"width": 1280, "height": 720},
         ignore_https_errors=True,
     )
-    yield context
-    context.close()
-    logger.info("Closed unauthenticated session context")
+    start_tracing(context, "unauth_session")
+    try:
+        yield context
+    finally:
+        stop_tracing(context, "unauth", "session")
+        context.close()
+        logger.info("Closed unauthenticated session context")
 
 
 @pytest.fixture(scope="module")
 def _unauth_context_module(browser: Browser) -> Generator[BrowserContext, None, None]:
     """One unauthenticated browser context per test file — closed when the file ends."""
+    from core.evidence import start_tracing, stop_tracing
+
     context = browser.new_context(
         viewport={"width": 1280, "height": 720},
         ignore_https_errors=True,
     )
-    yield context
-    context.close()
-    logger.info("Closed unauthenticated context")
+    start_tracing(context, "unauth_module")
+    try:
+        yield context
+    finally:
+        stop_tracing(context, "unauth", "module")
+        context.close()
+        logger.info("Closed unauthenticated context")
 
 
 @pytest.fixture()
@@ -222,24 +249,19 @@ def pytest_sessionfinish(session, exitstatus):
     baseline_path = session.config.getoption("--baseline", default=None)
 
     from core.report_writer import (
-        write_benchmark_diff_csv,
         write_benchmark_diff_json,
-        write_csv,
         write_html_report,
         write_json,
     )
 
     json_path = ""
-    csv_path = ""
 
     if run_mode == "measure":
         json_path = write_json(results)
-        csv_path = write_csv(results)
         write_html_report(
             results,
             comparison=None,
             json_path=json_path,
-            csv_path=csv_path,
             run_mode=run_mode,
         )
         return
@@ -255,22 +277,13 @@ def pytest_sessionfinish(session, exitstatus):
         comparisons = compare_results(baseline, current_dicts)
         diff_data = comparison_to_dict(comparisons)
         write_benchmark_diff_json(diff_data)
-        write_benchmark_diff_csv(diff_data)
         write_html_report(
             results,
             comparison=comparisons,
             json_path=json_path,
-            csv_path=csv_path,
             run_mode=run_mode,
         )
     elif run_mode == "benchmark":
         logger.warning("Benchmark mode set but --baseline not provided; writing measure outputs only.")
         json_path = write_json(results)
-        csv_path = write_csv(results)
-        write_html_report(
-            results,
-            comparison=None,
-            json_path=json_path,
-            csv_path=csv_path,
-            run_mode=run_mode,
-        )
+        write_html_report(results, comparison=None, json_path=json_path, run_mode=run_mode)
