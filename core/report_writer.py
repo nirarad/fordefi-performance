@@ -678,12 +678,17 @@ def _build_performance_summary_rows(by_page: dict[str, list[MeasurementResult]])
         page_rows = by_page.get(page, [])
         load_time = _get_load_time(page_rows) if page_rows else "—"
         table_time = _get_table_render_time(page_rows) if page_rows else "—"
+        sort_time = _get_sort_time(page_rows) if page_rows else "—"
+        search_time = _get_search_time(page_rows) if page_rows else "—"
         table_class = "" if table_time != "—" else "na"
+        sort_class = "" if sort_time != "—" else "na"
+        search_class = "" if search_time != "—" else "na"
         err_count = _get_console_errors(page_rows) if page_rows else 0
         rows.append(
             f"<tr><td>{_h(page)}</td><td>{_h(load_time)}</td>"
             f"<td class=\"{table_class}\">{_h(table_time)}</td>"
-            f"<td class=\"na\">—</td><td class=\"na\">—</td><td class=\"na\">—</td><td>{err_count}</td></tr>"
+            f"<td class=\"{sort_class}\">{_h(sort_time)}</td><td class=\"na\">—</td>"
+            f"<td class=\"{search_class}\">{_h(search_time)}</td><td>{err_count}</td></tr>"
         )
     return "\n".join(rows)
 
