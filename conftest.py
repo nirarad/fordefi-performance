@@ -98,48 +98,35 @@ def ensure_authenticated(browser: Browser) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Authenticated page — single browser window for the entire run
+# Authenticated page
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def _auth_context(
     browser: Browser,
     browser_context_args: dict,
 ) -> Generator[BrowserContext, None, None]:
-    """Session-scoped authenticated context — one browser window for all tests."""
+    """One authenticated browser window per test file — closed when the file ends."""
     context = browser.new_context(**browser_context_args)
     yield context
     context.close()
-
-
-@pytest.fixture(scope="session")
-def _shared_page(
-    _auth_context: BrowserContext,
-    request: pytest.FixtureRequest,
-) -> Generator[Page | None, None, None]:
-    """Session-scoped page reused across all tests (--single-session only)."""
-    if not request.config.getoption("--single-session"):
-        yield None
-        return
-    logger.info("Single-session mode: creating shared authenticated page")
-    pg = _auth_context.new_page()
-    yield pg
-    pg.close()
+    logger.info("Closed authenticated context")
 
 
 @pytest.fixture()
 def page(
-    _shared_page: Page | None,
     _auth_context: BrowserContext,
+    request: pytest.FixtureRequest,
 ) -> Generator[Page, None, None]:
-    """Per-test authenticated page.
+    """Per-test authenticated page (tab).
 
-    --single-session : reuses the single session-scoped page (same tab).
-    default          : opens a fresh tab inside the session-scoped context,
-                       closed after the test.  The browser window stays open.
+    --single-session : all tests in the module share the same tab.
+    default          : fresh tab per test, closed afterwards.
     """
-    if _shared_page is not None:
-        yield _shared_page
+    if request.config.getoption("--single-session"):
+        if not hasattr(_auth_context, "_shared_page"):
+            _auth_context._shared_page = _auth_context.new_page()  # type: ignore[attr-defined]
+        yield _auth_context._shared_page  # type: ignore[attr-defined]
         return
     pg = _auth_context.new_page()
     yield pg
@@ -147,49 +134,37 @@ def page(
 
 
 # ---------------------------------------------------------------------------
-# Unauthenticated page — single browser window for the entire run
+# Unauthenticated page
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def _unauth_context(
     browser: Browser,
 ) -> Generator[BrowserContext, None, None]:
-    """Session-scoped unauthenticated context — one browser window."""
+    """One unauthenticated browser window per test file — closed when the file ends."""
     context = browser.new_context(
         viewport={"width": 1280, "height": 720},
         ignore_https_errors=True,
     )
     yield context
     context.close()
-
-
-@pytest.fixture(scope="session")
-def _shared_unauth_page(
-    _unauth_context: BrowserContext,
-    request: pytest.FixtureRequest,
-) -> Generator[Page | None, None, None]:
-    """Session-scoped unauth page reused across all tests (--single-session only)."""
-    if not request.config.getoption("--single-session"):
-        yield None
-        return
-    logger.info("Single-session mode: creating shared unauthenticated page")
-    pg = _unauth_context.new_page()
-    yield pg
-    pg.close()
+    logger.info("Closed unauthenticated context")
 
 
 @pytest.fixture()
 def unauthenticated_page(
-    _shared_unauth_page: Page | None,
     _unauth_context: BrowserContext,
+    request: pytest.FixtureRequest,
 ) -> Generator[Page, None, None]:
     """Per-test unauthenticated page for login benchmarking.
 
-    --single-session : reuses the single session-scoped page (same tab).
-    default          : opens a fresh tab, closed after the test.
+    --single-session : all tests in the module share the same tab.
+    default          : fresh tab per test, closed afterwards.
     """
-    if _shared_unauth_page is not None:
-        yield _shared_unauth_page
+    if request.config.getoption("--single-session"):
+        if not hasattr(_unauth_context, "_shared_page"):
+            _unauth_context._shared_page = _unauth_context.new_page()  # type: ignore[attr-defined]
+        yield _unauth_context._shared_page  # type: ignore[attr-defined]
         return
     pg = _unauth_context.new_page()
     yield pg
