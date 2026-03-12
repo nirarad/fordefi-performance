@@ -19,18 +19,12 @@ from core.console_capture import ConsoleCapture
 from core.evidence import take_screenshot
 from core.logger import get_logger
 from core.metrics import MeasurementResult
-from core.timing import (
-    capture_navigation_timing,
-    capture_web_vitals,
-    measure_action,
-    wait_for_selector,
-)
-from pages.login_page import LoginPage, LoginSelectors
+from core.timing import capture_navigation_timing, capture_web_vitals, measure_action
+from pages.login_page import LoginPage
 
 logger = get_logger(__name__)
 
 BASE_URL = os.getenv("BASE_URL", "https://app.preprod.fordefi.com")
-_selectors = LoginSelectors()
 
 
 def _require_credentials() -> tuple[str, str]:
@@ -51,19 +45,14 @@ def test_login_page_load(unauthenticated_page: Page) -> None:
     Clock starts at navigation and stops when the email input is visible.
     """
     page = unauthenticated_page
+    login_page = LoginPage(page)
+
     console = ConsoleCapture()
     console.start(page)
 
     with measure_action("Login page load") as wall_clock:
         page.goto(BASE_URL, wait_until="commit")
-
-        form_ready_ms = wait_for_selector(
-            page,
-            _selectors.email_input,
-            state="visible",
-            timeout=30_000,
-            label="Login email input",
-        )
+        form_ready_ms = login_page.wait_for_login_form()
 
     nav = capture_navigation_timing(page)
     vitals = capture_web_vitals(page)
@@ -99,18 +88,11 @@ def test_login_flow(unauthenticated_page: Page) -> None:
     """
     page = unauthenticated_page
     username, password = _require_credentials()
+    login_page = LoginPage(page)
 
     with measure_action("Login page load (pre-login)") as page_load_clock:
         page.goto(BASE_URL, wait_until="commit")
-        wait_for_selector(
-            page,
-            _selectors.email_input,
-            state="visible",
-            timeout=30_000,
-            label="Login email input",
-        )
-
-    login_page = LoginPage(page)
+        login_page.wait_for_login_form()
 
     with measure_action("Login credential submission") as login_clock:
         login_page.login(username, password)

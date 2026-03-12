@@ -17,12 +17,7 @@ from core.console_capture import ConsoleCapture
 from core.evidence import take_screenshot
 from core.logger import get_logger
 from core.metrics import MeasurementResult
-from core.timing import (
-    capture_navigation_timing,
-    capture_web_vitals,
-    measure_action,
-    wait_for_selector,
-)
+from core.timing import capture_navigation_timing, capture_web_vitals, measure_action
 from data.scenario_loader import NavTabScenario, load_nav_tab_scenarios
 from pages.nav_bar_page import NavBarPage
 
@@ -53,6 +48,7 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
            click it and measure the time until the new rows are rendered.
     """
     tab_name = scenario.tab_name
+    nav_page = NavBarPage(page)
     config = NavBarPage.get_tab_config(tab_name)
 
     console = ConsoleCapture()
@@ -66,27 +62,14 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
     # -- Phase 1: initial tab load -------------------------------------------
 
     with measure_action(f"{tab_name} nav-tab load") as wall_clock:
-        page.locator(NavBarPage.nav_bar_selector(config.path)).click()
-        page.wait_for_url(f"**{config.path}", timeout=30_000)
+        nav_page.navigate_to(tab_name)
 
-        if config.supports_spinner and config.spinner_selector:
-            spinner_ms = wait_for_selector(
-                page,
-                config.spinner_selector,
-                state="hidden",
-                timeout=60_000,
-                label=f"{tab_name} spinner",
-            )
+        spinner_ms = nav_page.wait_for_spinner_gone(tab_name)
+        if spinner_ms is not None:
             logger.info("%s spinner gone in %.0f ms", tab_name, spinner_ms)
 
-        if config.supports_table and config.ready_selector:
-            rows_ms = wait_for_selector(
-                page,
-                config.ready_selector,
-                state="visible",
-                timeout=60_000,
-                label=f"{tab_name} table rows",
-            )
+        rows_ms = nav_page.wait_for_table_rows(tab_name)
+        if rows_ms is not None:
             logger.info("%s table rows visible in %.0f ms", tab_name, rows_ms)
 
     nav = capture_navigation_timing(page)
@@ -114,26 +97,21 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
 
     # -- Phase 2: pagination (next page) -------------------------------------
 
-    nav_page = NavBarPage(page)
+    first_row_id = nav_page.first_row_id
 
-    if config.supports_pagination and nav_page.can_paginate_next():
-        row_locator = page.locator(config.ready_selector).first
-
+    if (
+        config.supports_pagination
+        and first_row_id is not None
+        and nav_page.can_paginate_next()
+    ):
         with measure_action(f"{tab_name} pagination next-page") as pg_clock:
             nav_page.click_next_page()
-            row_locator.wait_for(state="detached", timeout=30_000)
-            wait_for_selector(
-                page,
-                config.ready_selector,
-                state="visible",
-                timeout=60_000,
-                label=f"{tab_name} pagination table rows",
-            )
+            nav_page.wait_for_page_change(tab_name, first_row_id)
 
         take_screenshot(page, tab_slug, "pagination_next")
         logger.info("%s pagination next — wall: %.0f ms", tab_name, pg_clock[0])
     elif config.supports_pagination:
-        logger.info("%s: next-page button not available — skipping pagination", tab_name)
+        logger.warning("%s: next-page button not available — skipping pagination", tab_name)
 
     console.stop()
 

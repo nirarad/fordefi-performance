@@ -897,6 +897,32 @@ This aligns directly with the assignment deliverable requirements.
 5. Test IDs are assumed to be manually maintained outside the framework.
 6. New test cases should be added by extending page specs and scenario data, not by duplicating procedural code.
 
+## No selectors in tests (CRITICAL)
+
+Test files must **never** reference CSS selectors, XPath expressions, `data-testid` strings, or call `page.locator()` directly. All DOM interaction must go through page object methods.
+
+### What belongs in page objects
+
+- Selector strings (in `Selectors` dataclass or `TabConfig`)
+- `page.locator()` calls
+- `wait_for_selector()` calls
+- Any DOM query or element interaction logic
+
+### What belongs in tests
+
+- Page object method calls (`nav_page.navigate_to()`, `login_page.wait_for_login_form()`)
+- URL navigation (`page.goto()`, `page.wait_for_url()`)
+- Timing wrappers (`measure_action`)
+- Metric capture (`capture_navigation_timing`, `capture_web_vitals`)
+- Evidence capture (`take_screenshot`)
+- Assertions and logging
+
+### Why
+
+- Selector changes only require updating one place (the page object), not every test
+- Tests read as high-level intent, not DOM implementation details
+- Consistent timeout and wait strategies are enforced in page objects, not scattered across tests
+
 ---
 
 ## Implementation order

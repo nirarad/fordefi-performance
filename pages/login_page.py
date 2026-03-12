@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from playwright.sync_api import Locator, Page
 
 from core.logger import get_logger
+from core.timing import wait_for_selector
 
 logger = get_logger(__name__)
 
@@ -50,6 +51,14 @@ class LoginPage:
 
         logger.info("Submitting login")
         self._continue_button.click()
+
+    def wait_for_login_form(self, timeout: int = 30_000) -> float:
+        """Wait for the login form to render. Returns elapsed ms."""
+        return wait_for_selector(
+            self.page, self.selectors.email_input,
+            state="visible", timeout=timeout,
+            label="Login email input",
+        )
 
     def is_login_page(self) -> bool:
         """Check if the current page is the Auth0 login page."""

@@ -10,10 +10,11 @@ from dataclasses import dataclass
 from playwright.sync_api import Locator, Page
 
 from core.logger import get_logger
+from core.timing import wait_for_selector
 
 logger = get_logger(__name__)
 
-NAV_TIMEOUT = 15_000
+NAV_TIMEOUT = 30_000
 
 
 @dataclass(frozen=True)
@@ -182,6 +183,30 @@ class NavBarPage:
     def navigate_to_address_book(self) -> None:
         self.navigate_to("Address Book")
 
+    # -- wait helpers --------------------------------------------------------
+
+    def wait_for_spinner_gone(self, tab_name: str, timeout: int = 60_000) -> float | None:
+        """Wait for the tab's spinner to disappear. Returns ms or None if no spinner."""
+        config = self.get_tab_config(tab_name)
+        if not config.supports_spinner or not config.spinner_selector:
+            return None
+        return wait_for_selector(
+            self.page, config.spinner_selector,
+            state="hidden", timeout=timeout,
+            label=f"{tab_name} spinner",
+        )
+
+    def wait_for_table_rows(self, tab_name: str, timeout: int = 60_000) -> float | None:
+        """Wait for table rows to become visible. Returns ms or None if no table."""
+        config = self.get_tab_config(tab_name)
+        if not config.supports_table or not config.ready_selector:
+            return None
+        return wait_for_selector(
+            self.page, config.ready_selector,
+            state="visible", timeout=timeout,
+            label=f"{tab_name} table rows",
+        )
+
     # -- state checks --------------------------------------------------------
 
     def is_tab_active(self, tab_name: str) -> bool:
@@ -204,6 +229,19 @@ class NavBarPage:
             return False
         return True
 
+    @property
+    def first_row_id(self) -> str | None:
+        """Return the data-id of the first visible table row."""
+        row = self.page.locator(".MuiDataGrid-row").first
+        return row.get_attribute("data-id") if row.is_visible(timeout=3_000) else None
+
     def click_next_page(self) -> None:
         """Click the next-page pagination button."""
         self.page.locator(self.selectors.next_page_button).first.click()
+
+    def wait_for_page_change(self, tab_name: str, prev_row_id: str, timeout: int = 60_000) -> None:
+        """Wait until the first table row has a different data-id than prev_row_id."""
+        config = self.get_tab_config(tab_name)
+        self.page.locator(
+            f'{config.ready_selector}:not([data-id="{prev_row_id}"])',
+        ).first.wait_for(state="visible", timeout=timeout)
