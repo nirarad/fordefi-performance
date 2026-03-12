@@ -28,8 +28,8 @@ def get_run_dir() -> str:
     global _run_dir
     if _run_dir is not None:
         return _run_dir
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    _run_dir = os.path.join(REPORTS_BASE, ts)
+    from core.report_writer import _run_folder_timestamp
+    _run_dir = os.path.join(REPORTS_BASE, _run_folder_timestamp())
     os.makedirs(_run_dir, exist_ok=True)
     return _run_dir
 

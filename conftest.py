@@ -1,5 +1,4 @@
 import os
-from datetime import datetime, timezone
 from typing import Generator
 
 import pytest
@@ -24,10 +23,6 @@ RUN_DIR_ATTR = "fordefi_run_dir"
 REPORTS_BASE = "reports"
 
 
-def _run_dir_timestamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-
 def pytest_sessionstart(session):
     """Create a timestamped run directory when performance tests are collected."""
     try:
@@ -38,7 +33,8 @@ def pytest_sessionstart(session):
         has_perf = False
     if not has_perf:
         return
-    run_dir = os.path.join(REPORTS_BASE, _run_dir_timestamp())
+    from core.report_writer import _run_folder_timestamp
+    run_dir = os.path.join(REPORTS_BASE, _run_folder_timestamp())
     os.makedirs(run_dir, exist_ok=True)
     setattr(session.config, RUN_DIR_ATTR, run_dir)
     from core import evidence

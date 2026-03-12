@@ -31,12 +31,17 @@ BASE_URL = "https://app.preprod.fordefi.com"
 _cached_default_run_dir: str | None = None
 
 
+def _run_folder_timestamp() -> str:
+    """Human-readable timestamp for report folder names (e.g. 2025-03-12_14-30-22)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+
+
 def _default_run_dir() -> str:
     """Return a timestamped run directory under reports/ (cached per process)."""
     global _cached_default_run_dir
     if _cached_default_run_dir is not None:
         return _cached_default_run_dir
-    _cached_default_run_dir = os.path.join(REPORTS_BASE, _ts_prefix())
+    _cached_default_run_dir = os.path.join(REPORTS_BASE, _run_folder_timestamp())
     os.makedirs(_cached_default_run_dir, exist_ok=True)
     return _cached_default_run_dir
 
