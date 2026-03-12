@@ -5,6 +5,9 @@ Page-specific details (path, selectors, capabilities) are owned by the
 NavBarPage page object.  The test clicks the sidebar nav link, waits for
 load indicators, and captures wall-clock time, navigation timing,
 web vitals, and console errors.
+
+After the initial load, tabs that support pagination get a second
+measurement: click next-page and time the table reload.
 """
 
 import pytest
@@ -42,11 +45,12 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
 
     Steps:
         1. Go to the starting page so the nav bar is rendered.
-        2. Look up page details from NavBarPage for the given tab name.
-        3. Click the nav-bar link and wait for the URL.
-        4. Wait for the spinner to disappear (if supported).
-        5. Wait for table rows to appear (if supported).
-        6. Capture navigation timing, web vitals, screenshot, and console errors.
+        2. Click the nav-bar link and wait for the URL.
+        3. Wait for the spinner to disappear (if supported).
+        4. Wait for table rows to appear (if supported).
+        5. Capture navigation timing, web vitals, screenshot, and console errors.
+        6. If the tab supports pagination and the next-page button is enabled,
+           click it and measure the time until the new rows are rendered.
     """
     tab_name = scenario.tab_name
     config = NavBarPage.get_tab_config(tab_name)
@@ -58,6 +62,8 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
     page.wait_for_load_state("domcontentloaded")
 
     tab_slug = tab_name.lower().replace(" ", "_")
+
+    # -- Phase 1: initial tab load -------------------------------------------
 
     with measure_action(f"{tab_name} nav-tab load") as wall_clock:
         page.locator(NavBarPage.nav_bar_selector(config.path)).click()
@@ -86,9 +92,8 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
     nav = capture_navigation_timing(page)
     vitals = capture_web_vitals(page)
     screenshot_path = take_screenshot(page, tab_slug, "nav_tab_load")
-    console.stop()
 
-    result = MeasurementResult.from_page_load(
+    load_result = MeasurementResult.from_page_load(
         tab_name,
         "nav_tab_load",
         wall_clock[0],
@@ -101,15 +106,40 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
     logger.info(
         "%s nav-tab load — wall: %.0f ms | TTFB: %.0f ms | LCP: %.0f ms | errors: %d",
         tab_name,
-        result.wall_clock.median,
-        result.ttfb.median,
-        result.lcp.median,
-        result.console_error_count,
+        load_result.wall_clock.median,
+        load_result.ttfb.median,
+        load_result.lcp.median,
+        load_result.console_error_count,
     )
+
+    # -- Phase 2: pagination (next page) -------------------------------------
+
+    nav_page = NavBarPage(page)
+
+    if config.supports_pagination and nav_page.can_paginate_next():
+        row_locator = page.locator(config.ready_selector).first
+
+        with measure_action(f"{tab_name} pagination next-page") as pg_clock:
+            nav_page.click_next_page()
+            row_locator.wait_for(state="detached", timeout=30_000)
+            wait_for_selector(
+                page,
+                config.ready_selector,
+                state="visible",
+                timeout=60_000,
+                label=f"{tab_name} pagination table rows",
+            )
+
+        take_screenshot(page, tab_slug, "pagination_next")
+        logger.info("%s pagination next — wall: %.0f ms", tab_name, pg_clock[0])
+    elif config.supports_pagination:
+        logger.info("%s: next-page button not available — skipping pagination", tab_name)
+
+    console.stop()
 
     if console.error_count > 0:
         logger.warning(
-            "Console errors during %s load: %d", tab_name, console.error_count,
+            "Console errors during %s: %d", tab_name, console.error_count,
         )
         for entry in console.errors:
             logger.warning("  %s", entry.text[:200])

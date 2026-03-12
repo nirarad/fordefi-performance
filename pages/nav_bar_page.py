@@ -23,6 +23,7 @@ class TabConfig:
     spinner_selector: str
     supports_table: bool
     ready_selector: str
+    supports_pagination: bool = False
 
 
 TABS: dict[str, TabConfig] = {
@@ -32,6 +33,7 @@ TABS: dict[str, TabConfig] = {
         spinner_selector=".MuiCircularProgress-circleIndeterminate",
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
+        supports_pagination=True,
     ),
     "Connected Accounts": TabConfig(
         path="/connected-accounts",
@@ -39,6 +41,7 @@ TABS: dict[str, TabConfig] = {
         spinner_selector=".MuiCircularProgress-circleIndeterminate",
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
+        supports_pagination=True,
     ),
     "Assets": TabConfig(
         path="/assets",
@@ -46,6 +49,7 @@ TABS: dict[str, TabConfig] = {
         spinner_selector=".MuiCircularProgress-circleIndeterminate",
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
+        supports_pagination=True,
     ),
     "Transactions": TabConfig(
         path="/transactions-history",
@@ -53,6 +57,7 @@ TABS: dict[str, TabConfig] = {
         spinner_selector=".MuiCircularProgress-circleIndeterminate",
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
+        supports_pagination=True,
     ),
     "Allowances": TabConfig(
         path="/allowances",
@@ -60,6 +65,7 @@ TABS: dict[str, TabConfig] = {
         spinner_selector=".MuiCircularProgress-circleIndeterminate",
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
+        supports_pagination=True,
     ),
     "Address Book": TabConfig(
         path="/address-book",
@@ -67,6 +73,7 @@ TABS: dict[str, TabConfig] = {
         spinner_selector=".MuiCircularProgress-circleIndeterminate",
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
+        supports_pagination=True,
     ),
 }
 
@@ -87,6 +94,8 @@ class NavBarSelectors:
     title_transactions: str = '[data-test-id="title-item-Transactions"]'
     title_allowances: str = '[data-test-id="title-item-Allowances"]'
     title_address_book: str = '[data-test-id="title-item-Address Book"]'
+
+    next_page_button: str = '[data-test-id="chevron-right-icon"]'
 
 
 class NavBarPage:
@@ -182,3 +191,19 @@ class NavBarPage:
             f'[data-test-id="nav-bar-item-link-{config.path}-isActive"]'
         )
         return self.page.locator(active_selector).is_visible(timeout=3_000)
+
+    # -- pagination ----------------------------------------------------------
+
+    def can_paginate_next(self) -> bool:
+        """Return True if the next-page button is visible and enabled."""
+        btn = self.page.locator(self.selectors.next_page_button).first
+        if not btn.is_visible(timeout=5_000):
+            return False
+        parent = btn.locator("xpath=ancestor::button")
+        if parent.count() > 0 and parent.first.is_disabled():
+            return False
+        return True
+
+    def click_next_page(self) -> None:
+        """Click the next-page pagination button."""
+        self.page.locator(self.selectors.next_page_button).first.click()
