@@ -15,6 +15,9 @@ logger = get_logger(__name__)
 AUTH_STATE_PATH = "auth/storage_state.json"
 BASE_URL = os.getenv("BASE_URL", "https://app.preprod.fordefi.com")
 
+# Key used on pytest config to store collected performance results (list of MeasurementResult).
+PERF_RESULTS_ATTR = "_fordefi_perf_results"
+
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -46,6 +49,14 @@ def run_mode(request):
 @pytest.fixture(scope="session")
 def baseline_path(request):
     return request.config.getoption("--baseline")
+
+
+@pytest.fixture(scope="session")
+def results_collector(request):
+    """Session-scoped list for performance test results. Stored on config for sessionfinish hook."""
+    collected = []
+    setattr(request.config, PERF_RESULTS_ATTR, collected)
+    yield collected
 
 
 @pytest.fixture(scope="session")
@@ -101,12 +112,24 @@ def ensure_authenticated(browser: Browser) -> None:
 # Authenticated page
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="module")
-def _auth_context(
+@pytest.fixture(scope="session")
+def _auth_context_session(
     browser: Browser,
     browser_context_args: dict,
 ) -> Generator[BrowserContext, None, None]:
-    """One authenticated browser window per test file — closed when the file ends."""
+    """One authenticated browser context for the whole run (used with --single-session)."""
+    context = browser.new_context(**browser_context_args)
+    yield context
+    context.close()
+    logger.info("Closed authenticated session context")
+
+
+@pytest.fixture(scope="module")
+def _auth_context_module(
+    browser: Browser,
+    browser_context_args: dict,
+) -> Generator[BrowserContext, None, None]:
+    """One authenticated browser context per test file — closed when the file ends."""
     context = browser.new_context(**browser_context_args)
     yield context
     context.close()
@@ -115,20 +138,23 @@ def _auth_context(
 
 @pytest.fixture()
 def page(
-    _auth_context: BrowserContext,
     request: pytest.FixtureRequest,
 ) -> Generator[Page, None, None]:
     """Per-test authenticated page (tab).
 
-    --single-session : all tests in the module share the same tab.
-    default          : fresh tab per test, closed afterwards.
+    --single-session : same browser context and tab for all tests (session-scoped).
+    default          : one context per test file, fresh tab per test, closed afterwards.
     """
     if request.config.getoption("--single-session"):
-        if not hasattr(_auth_context, "_shared_page"):
-            _auth_context._shared_page = _auth_context.new_page()  # type: ignore[attr-defined]
-        yield _auth_context._shared_page  # type: ignore[attr-defined]
+        ctx = request.getfixturevalue("_auth_context_session")
+    else:
+        ctx = request.getfixturevalue("_auth_context_module")
+    if request.config.getoption("--single-session"):
+        if not hasattr(ctx, "_shared_page"):
+            ctx._shared_page = ctx.new_page()  # type: ignore[attr-defined]
+        yield ctx._shared_page  # type: ignore[attr-defined]
         return
-    pg = _auth_context.new_page()
+    pg = ctx.new_page()
     yield pg
     pg.close()
 
@@ -137,11 +163,21 @@ def page(
 # Unauthenticated page
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(scope="session")
+def _unauth_context_session(browser: Browser) -> Generator[BrowserContext, None, None]:
+    """One unauthenticated browser context for the whole run (used with --single-session)."""
+    context = browser.new_context(
+        viewport={"width": 1280, "height": 720},
+        ignore_https_errors=True,
+    )
+    yield context
+    context.close()
+    logger.info("Closed unauthenticated session context")
+
+
 @pytest.fixture(scope="module")
-def _unauth_context(
-    browser: Browser,
-) -> Generator[BrowserContext, None, None]:
-    """One unauthenticated browser window per test file — closed when the file ends."""
+def _unauth_context_module(browser: Browser) -> Generator[BrowserContext, None, None]:
+    """One unauthenticated browser context per test file — closed when the file ends."""
     context = browser.new_context(
         viewport={"width": 1280, "height": 720},
         ignore_https_errors=True,
@@ -152,20 +188,89 @@ def _unauth_context(
 
 
 @pytest.fixture()
-def unauthenticated_page(
-    _unauth_context: BrowserContext,
-    request: pytest.FixtureRequest,
-) -> Generator[Page, None, None]:
+def unauthenticated_page(request: pytest.FixtureRequest) -> Generator[Page, None, None]:
     """Per-test unauthenticated page for login benchmarking.
 
-    --single-session : all tests in the module share the same tab.
-    default          : fresh tab per test, closed afterwards.
+    --single-session : same browser context and tab for all tests (session-scoped).
+    default          : one context per test file, fresh tab per test, closed afterwards.
     """
     if request.config.getoption("--single-session"):
-        if not hasattr(_unauth_context, "_shared_page"):
-            _unauth_context._shared_page = _unauth_context.new_page()  # type: ignore[attr-defined]
-        yield _unauth_context._shared_page  # type: ignore[attr-defined]
+        ctx = request.getfixturevalue("_unauth_context_session")
+    else:
+        ctx = request.getfixturevalue("_unauth_context_module")
+    if request.config.getoption("--single-session"):
+        if not hasattr(ctx, "_shared_page"):
+            ctx._shared_page = ctx.new_page()  # type: ignore[attr-defined]
+        yield ctx._shared_page  # type: ignore[attr-defined]
         return
-    pg = _unauth_context.new_page()
+    pg = ctx.new_page()
     yield pg
     pg.close()
+
+
+# ---------------------------------------------------------------------------
+# Session finish: write artifacts and report (measure / benchmark)
+# ---------------------------------------------------------------------------
+
+def pytest_sessionfinish(session, exitstatus):
+    """After all tests: write results JSON/CSV and markdown report (measure) or compare to baseline (benchmark)."""
+    results = getattr(session.config, PERF_RESULTS_ATTR, None)
+    if results is None or len(results) == 0:
+        return
+
+    run_mode = session.config.getoption("--mode", default="measure")
+    baseline_path = session.config.getoption("--baseline", default=None)
+
+    from core.report_writer import (
+        write_benchmark_diff_csv,
+        write_benchmark_diff_json,
+        write_csv,
+        write_html_report,
+        write_json,
+    )
+
+    json_path = ""
+    csv_path = ""
+
+    if run_mode == "measure":
+        json_path = write_json(results)
+        csv_path = write_csv(results)
+        write_html_report(
+            results,
+            comparison=None,
+            json_path=json_path,
+            csv_path=csv_path,
+            run_mode=run_mode,
+        )
+        return
+
+    if run_mode == "benchmark" and baseline_path:
+        from core.benchmark import compare_results, comparison_to_dict, load_baseline
+        try:
+            baseline = load_baseline(baseline_path)
+        except FileNotFoundError as e:
+            logger.error("Benchmark baseline not found: %s", e)
+            return
+        current_dicts = [r.to_dict() for r in results]
+        comparisons = compare_results(baseline, current_dicts)
+        diff_data = comparison_to_dict(comparisons)
+        write_benchmark_diff_json(diff_data)
+        write_benchmark_diff_csv(diff_data)
+        write_html_report(
+            results,
+            comparison=comparisons,
+            json_path=json_path,
+            csv_path=csv_path,
+            run_mode=run_mode,
+        )
+    elif run_mode == "benchmark":
+        logger.warning("Benchmark mode set but --baseline not provided; writing measure outputs only.")
+        json_path = write_json(results)
+        csv_path = write_csv(results)
+        write_html_report(
+            results,
+            comparison=None,
+            json_path=json_path,
+            csv_path=csv_path,
+            run_mode=run_mode,
+        )

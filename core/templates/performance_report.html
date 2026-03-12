@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fordefi UI Performance Report</title>
+<style>
+body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; max-width: 960px; margin: 0 auto; padding: 1.5rem; color: #1a1a1a; }
+h1 { font-size: 1.5rem; border-bottom: 2px solid #333; padding-bottom: 0.5rem; }
+h2 { font-size: 1.25rem; margin-top: 2rem; color: #333; }
+h3 { font-size: 1.1rem; margin-top: 1.25rem; }
+p { margin: 0.5rem 0; }
+table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; font-size: 0.9rem; }
+th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; }
+th { background: #f0f0f0; font-weight: 600; }
+tr:nth-child(even) { background: #f9f9f9; }
+.header-table td { border: none; padding: 0.2rem 0; }
+.header-table td:first-child { font-weight: 600; width: 10rem; }
+.status-regressed { color: #c00; font-weight: 600; }
+.status-improved { color: #080; font-weight: 600; }
+.na { color: #888; }
+</style>
+</head>
+<body>
+
+<h1>Fordefi UI Performance Report</h1>
+<table class="header-table">
+<tr><td>Environment</td><td>Preprod</td></tr>
+<tr><td>URL</td><td>{base_url}</td></tr>
+<tr><td>Role</td><td>Viewer</td></tr>
+<tr><td>Framework</td><td>Python + Playwright</td></tr>
+<tr><td>Execution Date</td><td>{exec_date}</td></tr>
+<tr><td>Run Mode</td><td>{run_mode}</td></tr>
+<tr><td>Test Version</td><td>{git_version}</td></tr>
+</table>
+<hr>
+
+<h2>2. Test Actions</h2>
+<p>Each tested page executed the following actions where supported.</p>
+<table>
+<thead><tr><th>Action</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>Page Load</td><td>Navigation until page ready</td></tr>
+<tr><td>Table Render</td><td>Table visible and interactive</td></tr>
+<tr><td>Sort</td><td>Sorting by column</td></tr>
+<tr><td>Filter</td><td>Apply filter</td></tr>
+<tr><td>Search</td><td>Search by name or address</td></tr>
+<tr><td>Console Capture</td><td>Collect console errors</td></tr>
+</tbody>
+</table>
+<p>Tests executed using <strong>DDT with multiple inputs</strong> where applicable.</p>
+<hr>
+
+<h2>3. Results</h2>
+<h3>Performance Summary</h3>
+<table>
+<thead><tr><th>Page</th><th>Load Time</th><th>Table Render</th><th>Sort</th><th>Filter</th><th>Search</th><th>Console Errors</th></tr></thead>
+<tbody>
+{performance_summary_rows}
+</tbody>
+</table>
+<hr>
+
+<h2>4. Deep Dive Results</h2>
+{deep_dive_sections}
+<hr>
+
+<h2>5. Benchmark Comparison</h2>
+{benchmark_section}
+<hr>
+
+<h2>6. Console Errors</h2>
+<table>
+<thead><tr><th>Page</th><th>Error Count</th><th>Example Error</th></tr></thead>
+<tbody>
+{console_errors_rows}
+</tbody>
+</table>
+<hr>
+
+<h2>7. Artifacts</h2>
+<table>
+<thead><tr><th>Artifact</th><th>Location</th></tr></thead>
+<tbody>
+{artifacts_rows}
+</tbody>
+</table>
+<hr>
+
+<h2>8. Conclusion</h2>
+<p>{conclusion}</p>
+
+</body>
+</html>
