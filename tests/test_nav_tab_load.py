@@ -6,8 +6,11 @@ NavBarPage page object.  The test clicks the sidebar nav link, waits for
 load indicators, and captures wall-clock time, navigation timing,
 web vitals, and console errors.
 
-After the initial load, tabs that support pagination get a second
-measurement: click next-page and time the table reload.
+Deep-dive tabs (with supports_search/supports_sort) get additional
+measurements: click the second column sort button (aria-label="Sort") and time
+table load; then type in the search box (data-test-id="search-box-root") and
+time table load. Then, if the tab supports pagination, click next-page and time
+the table reload.
 """
 
 import pytest
@@ -43,9 +46,11 @@ def _run_nav_tab_load_iteration(
     MeasurementResult,
     MeasurementResult | None,
     MeasurementResult | None,
+    MeasurementResult | None,
+    MeasurementResult | None,
 ]:
-    """Run one iteration of nav-tab load + optional table_render + optional pagination.
-    Returns (load_result, table_result or None, pagination_result or None)."""
+    """Run one iteration of nav-tab load + optional table/pagination/search/sort.
+    Returns (load_result, table_result, pagination_result, search_result, sort_result)."""
     network = NetworkCapture()
     network.start(page)
     with measure_action(f"{tab_name} nav-tab load") as wall_clock:
@@ -83,6 +88,40 @@ def _run_nav_tab_load_iteration(
             network_capture=None,
         )
 
+    sort_result = None
+    if config.supports_sort and table_page.is_sort_visible(column_index=1):
+        network_st = NetworkCapture()
+        network_st.start(page)
+        with measure_action(f"{tab_name} sort") as st_clock:
+            table_page.click_sort_button(column_index=1)
+            table_page.wait_for_table_after_sort(tab_name)
+        network_st.stop()
+        sort_result = MeasurementResult.from_wall_clock(
+            tab_name,
+            "sort",
+            st_clock[0],
+            network_capture=network_st,
+            screenshot_path="",
+        )
+        logger.info("%s sort — wall: %.0f ms", tab_name, st_clock[0])
+
+    search_result = None
+    if config.supports_search and table_page.is_search_visible():
+        network_sr = NetworkCapture()
+        network_sr.start(page)
+        with measure_action(f"{tab_name} search") as sr_clock:
+            table_page.type_search("a")
+            table_page.wait_for_table_after_search(tab_name)
+        network_sr.stop()
+        search_result = MeasurementResult.from_wall_clock(
+            tab_name,
+            "search",
+            sr_clock[0],
+            network_capture=network_sr,
+            screenshot_path="",
+        )
+        logger.info("%s search — wall: %.0f ms", tab_name, sr_clock[0])
+
     first_row_id = table_page.first_row_id
     pagination_result = None
     if (
@@ -107,7 +146,7 @@ def _run_nav_tab_load_iteration(
         )
         logger.info("%s pagination next — wall: %.0f ms", tab_name, pg_clock[0])
 
-    return load_result, table_result, pagination_result
+    return load_result, table_result, pagination_result, search_result, sort_result
 
 
 @pytest.mark.performance
@@ -155,6 +194,8 @@ def test_nav_tab_load(
     base_load: MeasurementResult | None = None
     base_table: MeasurementResult | None = None
     base_pagination: MeasurementResult | None = None
+    base_search: MeasurementResult | None = None
+    base_sort: MeasurementResult | None = None
     measured_count = 0
 
     for i in range(total):
@@ -165,8 +206,10 @@ def test_nav_tab_load(
         is_warmup = i < warmup
         is_last_measured = (i == total - 1) and not is_warmup
 
-        load_result, table_result, pagination_result = _run_nav_tab_load_iteration(
-            page, tab_name, nav_page, table_page, config, tab_slug, console,
+        load_result, table_result, pagination_result, search_result, sort_result = (
+            _run_nav_tab_load_iteration(
+                page, tab_name, nav_page, table_page, config, tab_slug, console,
+            )
         )
 
         if is_warmup:
@@ -178,12 +221,18 @@ def test_nav_tab_load(
             base_load = load_result
             base_table = table_result
             base_pagination = pagination_result
+            base_search = search_result
+            base_sort = sort_result
         else:
             base_load.merge_in(load_result)
             if base_table is not None and table_result is not None:
                 base_table.merge_in(table_result)
             if base_pagination is not None and pagination_result is not None:
                 base_pagination.merge_in(pagination_result)
+            if base_search is not None and search_result is not None:
+                base_search.merge_in(search_result)
+            if base_sort is not None and sort_result is not None:
+                base_sort.merge_in(sort_result)
 
         if is_last_measured:
             base_load.screenshot_path = take_screenshot(page, tab_slug, "nav_tab_load")
@@ -193,6 +242,10 @@ def test_nav_tab_load(
                 base_pagination.screenshot_path = take_screenshot(
                     page, tab_slug, "pagination_next",
                 )
+            if base_search is not None:
+                base_search.screenshot_path = take_screenshot(page, tab_slug, "search")
+            if base_sort is not None:
+                base_sort.screenshot_path = take_screenshot(page, tab_slug, "sort")
 
     if base_load is None:
         return
@@ -205,6 +258,12 @@ def test_nav_tab_load(
     if base_pagination is not None:
         base_pagination.compute_all()
         results_collector.append(base_pagination)
+    if base_search is not None:
+        base_search.compute_all()
+        results_collector.append(base_search)
+    if base_sort is not None:
+        base_sort.compute_all()
+        results_collector.append(base_sort)
 
     logger.info(
         "%s nav-tab load (n=%d) — wall median: %.0f ms | P95: %.0f ms | TTFB: %.0f ms | LCP: %.0f ms | errors: %d",
@@ -219,6 +278,10 @@ def test_nav_tab_load(
 
     if config.supports_pagination and base_pagination is None:
         logger.warning("%s: next-page button not available — skipping pagination", tab_name)
+    if config.supports_search and base_search is None:
+        logger.warning("%s: search box not available — skipping search", tab_name)
+    if config.supports_sort and base_sort is None:
+        logger.warning("%s: second column sort button not available — skipping sort", tab_name)
 
     console.stop()
 

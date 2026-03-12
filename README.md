@@ -181,7 +181,7 @@ Defined in `pytest.ini`:
 
 ## Artifacts and reports
 
-Each performance run writes to a timestamped directory under `reports/` (e.g. `reports/2026-03-12_18-10-34/`). These directories are gitignored (except `.gitkeep` files).
+Each performance run writes to a directory under `reports/` with a local timestamp and a short random salt to avoid collisions when running in parallel (e.g. `reports/2026-03-12_18-10-34_a1b2c3d4/`). These directories are gitignored (except `.gitkeep` files).
 
 ### Run directory layout
 

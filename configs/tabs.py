@@ -14,6 +14,8 @@ class TabConfig:
     supports_table: bool
     ready_selector: str
     supports_pagination: bool = False
+    supports_search: bool = False
+    supports_sort: bool = False
     spinner_selector: str = ""  # When empty and supports_spinner, caller uses site default.
 
 
@@ -24,6 +26,8 @@ TABS: dict[str, TabConfig] = {
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
+        supports_search=True,
+        supports_sort=True,
     ),
     "Connected Accounts": TabConfig(
         path="/connected-accounts",
@@ -31,6 +35,8 @@ TABS: dict[str, TabConfig] = {
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
+        supports_search=True,
+        supports_sort=True,
     ),
     "Assets": TabConfig(
         path="/assets",
@@ -38,6 +44,8 @@ TABS: dict[str, TabConfig] = {
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
+        supports_search=True,
+        supports_sort=True,
     ),
     "Transactions": TabConfig(
         path="/transactions-history",
@@ -45,6 +53,8 @@ TABS: dict[str, TabConfig] = {
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
+        supports_search=True,
+        supports_sort=True,
     ),
     "Allowances": TabConfig(
         path="/allowances",
@@ -52,6 +62,8 @@ TABS: dict[str, TabConfig] = {
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
+        supports_search=True,
+        supports_sort=True,
     ),
     "Address Book": TabConfig(
         path="/address-book",
@@ -59,6 +71,8 @@ TABS: dict[str, TabConfig] = {
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
+        supports_search=True,
+        supports_sort=True,
     ),
     "Transaction Policy": TabConfig(
         path="/transaction-policy",
@@ -78,6 +92,8 @@ TABS: dict[str, TabConfig] = {
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
+        supports_search=True,
+        supports_sort=True,
     ),
     "Settings": TabConfig(
         path="/settings",

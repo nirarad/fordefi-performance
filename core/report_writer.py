@@ -6,6 +6,7 @@ import csv
 import html
 import json
 import os
+import secrets
 import subprocess
 from datetime import datetime, timezone
 
@@ -33,8 +34,14 @@ _cached_default_run_dir: str | None = None
 
 
 def _run_folder_timestamp() -> str:
-    """Human-readable timestamp for report folder names (e.g. 2025-03-12_14-30-22)."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+    """Report folder name: local timestamp + salt to avoid collisions in parallel runs.
+
+    Format: 2025-03-12_14-30-22_<8-char hex salt>, e.g. 2025-03-12_14-30-22_a1b2c3d4.
+    """
+    local_now = datetime.now()
+    ts = local_now.strftime("%Y-%m-%d_%H-%M-%S")
+    salt = secrets.token_hex(4)
+    return f"{ts}_{salt}"
 
 
 def _default_run_dir() -> str:
@@ -721,6 +728,18 @@ def _build_deep_dive_sections(by_page: dict[str, list[MeasurementResult]]) -> st
     return "\n".join(parts)
 
 
+def _benchmark_metric_label(action: str) -> str:
+    """Human-readable label for benchmark table Metric column."""
+    labels = {
+        "nav_tab_load": "Page Load",
+        "table_render": "Table Render",
+        "pagination_next": "Pagination (next-page)",
+        "search": "Search",
+        "sort": "Sort",
+    }
+    return labels.get(action, action.replace("_", " ").title())
+
+
 def _build_benchmark_section(comparison: list[RowComparison] | None) -> str:
     if not comparison:
         return "<p>Included only when running in <strong>benchmark mode</strong>. Not applicable for this run.</p>"
@@ -732,7 +751,8 @@ def _build_benchmark_section(comparison: list[RowComparison] | None) -> str:
             curr = f"{wc.current_median:.0f} ms"
             chg = f"{wc.pct_change:+.1f}%"
             status_class = f" status-{c.row_status}" if c.row_status in ("regressed", "improved") else ""
-            rows.append(f"<tr><td>{_h(c.page_name)}</td><td>Page Load</td><td>{_h(prev)}</td><td>{_h(curr)}</td><td class=\"{status_class}\">{_h(chg)}</td></tr>")
+            metric_label = _benchmark_metric_label(c.action)
+            rows.append(f"<tr><td>{_h(c.page_name)}</td><td>{_h(metric_label)}</td><td>{_h(prev)}</td><td>{_h(curr)}</td><td class=\"{status_class}\">{_h(chg)}</td></tr>")
     regressed = sum(1 for c in comparison if c.row_status == "regressed")
     improved = sum(1 for c in comparison if c.row_status == "improved")
     rows_html = "\n".join(rows)
