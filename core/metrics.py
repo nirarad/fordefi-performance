@@ -6,6 +6,11 @@ import math
 import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.console_capture import ConsoleCapture
+    from core.timing import NavigationTiming, WebVitals
 
 
 @dataclass
@@ -89,6 +94,49 @@ class MeasurementResult:
             self.lcp,
             self.cls,
         ]
+
+    @classmethod
+    def from_page_load(
+        cls,
+        page_name: str,
+        action: str,
+        wall_clock_ms: float,
+        nav: NavigationTiming,
+        vitals: WebVitals,
+        *,
+        console: ConsoleCapture | None = None,
+        screenshot_path: str = "",
+    ) -> MeasurementResult:
+        """Build a result populated with navigation timing, vitals, and console data."""
+        result = cls(page_name=page_name, action=action)
+        result.wall_clock.samples.append(wall_clock_ms)
+        result.ttfb.samples.append(nav.ttfb_ms)
+        result.dom_content_loaded.samples.append(nav.dom_content_loaded_ms)
+        result.dom_interactive.samples.append(nav.dom_interactive_ms)
+        result.load_event_end.samples.append(nav.load_event_end_ms)
+        result.lcp.samples.append(vitals.lcp_ms)
+        result.cls.samples.append(vitals.cls)
+        if console is not None:
+            result.console_error_count = console.error_count
+        result.screenshot_path = screenshot_path
+        result.compute_all()
+        return result
+
+    @classmethod
+    def from_wall_clock(
+        cls,
+        page_name: str,
+        action: str,
+        wall_clock_ms: float,
+        *,
+        screenshot_path: str = "",
+    ) -> MeasurementResult:
+        """Build a minimal result with only a wall-clock sample."""
+        result = cls(page_name=page_name, action=action)
+        result.wall_clock.samples.append(wall_clock_ms)
+        result.screenshot_path = screenshot_path
+        result.compute_all()
+        return result
 
     def to_dict(self) -> dict:
         return {

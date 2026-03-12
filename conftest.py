@@ -1,8 +1,9 @@
 import os
+from typing import Generator
 
 import pytest
 from dotenv import load_dotenv
-from playwright.sync_api import Browser
+from playwright.sync_api import Browser, Page
 
 from core.logger import get_logger
 from pages.login_page import LoginPage
@@ -86,5 +87,18 @@ def ensure_authenticated(browser: Browser) -> None:
 
     context.storage_state(path=AUTH_STATE_PATH)
     logger.info("Auth state saved to %s", AUTH_STATE_PATH)
+    page.close()
+    context.close()
+
+
+@pytest.fixture()
+def unauthenticated_page(browser: Browser) -> Generator[Page, None, None]:
+    """Provide a fresh page with no saved session for login benchmarking."""
+    context = browser.new_context(
+        viewport={"width": 1280, "height": 720},
+        ignore_https_errors=True,
+    )
+    page = context.new_page()
+    yield page
     page.close()
     context.close()

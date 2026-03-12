@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Generator
+from typing import Generator, Literal
 
 from playwright.sync_api import Page
 
@@ -146,4 +146,32 @@ def measure_selector_appearance(
     )
     elapsed_ms = (time.perf_counter() - start) * 1_000
     logger.info("Selector [data-testid='%s'] visible in %.1f ms", testid, elapsed_ms)
+    return elapsed_ms
+
+
+def wait_for_selector(
+    page: Page,
+    selector: str,
+    *,
+    state: Literal["attached", "detached", "hidden", "visible"] = "visible",
+    timeout: int = 30_000,
+    label: str = "",
+) -> float:
+    """Wait for a CSS selector to reach the given state and return elapsed ms.
+
+    Args:
+        page: Playwright page instance.
+        selector: Any valid CSS selector string.
+        state: Target state — 'visible', 'hidden', 'attached', 'detached'.
+        timeout: Max wait time in milliseconds.
+        label: Human-readable label for logging.
+
+    Returns:
+        Elapsed milliseconds.
+    """
+    display_label = label or selector
+    start = time.perf_counter()
+    page.locator(selector).first.wait_for(state=state, timeout=timeout)
+    elapsed_ms = (time.perf_counter() - start) * 1_000
+    logger.info("%s reached state '%s' in %.1f ms", display_label, state, elapsed_ms)
     return elapsed_ms

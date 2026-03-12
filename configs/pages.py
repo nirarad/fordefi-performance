@@ -28,24 +28,21 @@ class PageSpec:
     default_sort_column: str = ""
     default_filter_scenario: str = ""
 
-    ready_selector_testid: str = ""
-    table_selector_testid: str = ""
-    spinner_selector_testid: str = ""
-    progress_bar_selector_testid: str = ""
-    search_input_testid: str = ""
-    sort_target_testid: str = ""
-    filter_trigger_testid: str = ""
-    empty_state_testid: str = ""
-    row_selector_testid: str = ""
-    sidebar_trigger_testid: str = ""
-    sidebar_panel_testid: str = ""
+    ready_selector: str = ""
+    table_selector: str = ""
+    row_selector: str = ""
+    spinner_selector: str = ""
+    progress_bar_selector: str = ""
+    search_input_selector: str = ""
+    sort_target_selector: str = ""
+    filter_trigger_selector: str = ""
+    empty_state_selector: str = ""
+    sidebar_trigger_selector: str = ""
+    sidebar_panel_selector: str = ""
 
 
 # ---------------------------------------------------------------------------
 # Page definitions
-# ---------------------------------------------------------------------------
-# Selectors use data-testid values. If a required testid is unknown, leave it
-# empty and request manual input before running tests that depend on it.
 # ---------------------------------------------------------------------------
 
 VAULTS_PAGE = PageSpec(
@@ -54,18 +51,16 @@ VAULTS_PAGE = PageSpec(
     test_priority=TestPriority.HIGH,
     deep_dive_candidate=True,
     supports_table=True,
+    supports_spinner=True,
     supports_search=True,
     supports_sort=True,
     supports_filter=True,
     supports_pagination=False,
     supports_sidebar=False,
-    # TODO: populate after inspecting the live page
-    ready_selector_testid="",
-    table_selector_testid="",
-    row_selector_testid="",
-    search_input_testid="",
-    sort_target_testid="",
-    filter_trigger_testid="",
+    ready_selector=".MuiDataGrid-row",
+    table_selector=".MuiDataGrid-main",
+    row_selector=".MuiDataGrid-row",
+    spinner_selector=".MuiCircularProgress-circleIndeterminate",
 )
 
 # Registry of all page specs for parametrized test discovery

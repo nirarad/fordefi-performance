@@ -2,6 +2,8 @@
 
 Vaults is the default page after login. This test measures:
 - Wall-clock load time (Python-side perf_counter)
+- Spinner disappearance time (data fully fetched)
+- Table row appearance time (grid rendered with data)
 - Browser-native navigation timing (TTFB, DOM load, etc.)
 - Core Web Vitals (LCP, CLS)
 - Console errors during load
@@ -20,6 +22,7 @@ from core.timing import (
     capture_navigation_timing,
     capture_web_vitals,
     measure_action,
+    wait_for_selector,
 )
 
 logger = get_logger(__name__)
@@ -27,13 +30,38 @@ logger = get_logger(__name__)
 
 @pytest.mark.performance
 def test_vaults_page_load(page: Page) -> None:
-    """Measure initial load performance of the Vaults page."""
+    """Measure initial load performance of the Vaults page.
+
+    The page is considered fully loaded when:
+    1. The loading spinner disappears (data fetch complete)
+    2. At least one MuiDataGrid row is visible (table rendered)
+    """
     spec = VAULTS_PAGE
     console = ConsoleCapture()
     console.start(page)
 
-    with measure_action(f"{spec.name} page load") as wall_clock:
-        page.goto(spec.path, wait_until="networkidle")
+    with measure_action(f"{spec.name} full page load") as wall_clock:
+        page.goto(spec.path, wait_until="commit")
+
+        if spec.supports_spinner and spec.spinner_selector:
+            spinner_gone_ms = wait_for_selector(
+                page,
+                spec.spinner_selector,
+                state="hidden",
+                timeout=60_000,
+                label=f"{spec.name} spinner",
+            )
+            logger.info("%s spinner gone in %.0f ms", spec.name, spinner_gone_ms)
+
+        if spec.supports_table and spec.ready_selector:
+            rows_visible_ms = wait_for_selector(
+                page,
+                spec.ready_selector,
+                state="visible",
+                timeout=60_000,
+                label=f"{spec.name} table rows",
+            )
+            logger.info("%s table rows visible in %.0f ms", spec.name, rows_visible_ms)
 
     nav = capture_navigation_timing(page)
     vitals = capture_web_vitals(page)
@@ -42,20 +70,15 @@ def test_vaults_page_load(page: Page) -> None:
 
     console.stop()
 
-    result = MeasurementResult(
-        page_name=spec.name,
-        action="page_load",
+    result = MeasurementResult.from_page_load(
+        spec.name,
+        "page_load",
+        wall_clock[0],
+        nav,
+        vitals,
+        console=console,
+        screenshot_path=screenshot_path,
     )
-    result.wall_clock.samples.append(wall_clock[0])
-    result.ttfb.samples.append(nav.ttfb_ms)
-    result.dom_content_loaded.samples.append(nav.dom_content_loaded_ms)
-    result.dom_interactive.samples.append(nav.dom_interactive_ms)
-    result.load_event_end.samples.append(nav.load_event_end_ms)
-    result.lcp.samples.append(vitals.lcp_ms)
-    result.cls.samples.append(vitals.cls)
-    result.console_error_count = console.error_count
-    result.screenshot_path = screenshot_path
-    result.compute_all()
 
     logger.info(
         "Vaults page load — wall: %.0f ms | TTFB: %.0f ms | LCP: %.0f ms | errors: %d",
