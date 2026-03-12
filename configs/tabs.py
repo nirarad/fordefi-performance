@@ -113,3 +113,18 @@ def get_tab_config(tab_name: str) -> TabConfig:
             f"Valid tabs: {', '.join(TABS)}"
         )
     return config
+
+
+# Selector to wait for when opening a single item (first row click) from list.
+# Used by single-item load test: click first row then wait for this element.
+# Transactions: sidebar load is finished when the details accordion body is visible.
+SINGLE_ITEM_DETAIL_SELECTORS: dict[str, str] = {
+    "Vaults": '[data-test-id="single-vault-info-widget-root"]',
+    "Connected Accounts": '[data-test-id="single-vault-info-widget-root"]',
+    "Transactions": '[data-test-id="transaction-details-root"] [data-test-id="accordion-details-body"]',
+}
+
+
+def get_single_item_detail_selector(tab_name: str) -> str | None:
+    """Return the detail ready selector for single-item load, or None if not supported."""
+    return SINGLE_ITEM_DETAIL_SELECTORS.get(tab_name)

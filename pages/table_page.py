@@ -129,3 +129,25 @@ class TablePage:
             timeout=timeout,
             label=f"{tab_name} table after sort",
         )
+
+
+class TransactionTablePage(TablePage):
+    """Table page for Transactions: the sidebar opens by clicking a row."""
+
+    # Click 20% from the start of the row (vertically centered)
+    _ROW_CLICK_X_RATIO = 0.2
+
+    def click_first_table_row(self) -> None:
+        """Click the first transaction row; the transaction detail sidebar opens.
+
+        Clicks at 20% from the start of the row (vertically centered) for deterministic behavior.
+        """
+        row = self.page.locator(self.selectors.data_grid_row).first
+        row.scroll_into_view_if_needed()
+        box = row.bounding_box()
+        if box:
+            x = box["width"] * self._ROW_CLICK_X_RATIO
+            y = box["height"] / 2
+            row.click(position={"x": x, "y": y})
+        else:
+            row.click()

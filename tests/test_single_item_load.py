@@ -1,23 +1,23 @@
-"""DDT: Measure load performance for a single item (vault or connected account).
+"""DDT: Measure load performance for a single item (vault, connected account, or transaction).
 
-From the list table, click the first row and measure time until the detail page
-(single-vault-info-widget) is visible. Covers Vaults and Connected Accounts.
-Scenario data from data/scenarios/single_item_load.csv.
+From the list table, click the first row and measure time until the detail view
+is visible (vault/account widget or transaction sidebar). Scenario data from
+data/scenarios/single_item_load.csv.
 """
 
 import pytest
 from playwright.sync_api import Page
 
+from configs.tabs import get_single_item_detail_selector
 from core.console_capture import ConsoleCapture
 from core.evidence import take_screenshot
 from core.logger import get_logger
 from core.metrics import MeasurementResult
 from core.network_capture import NetworkCapture
-from core.timing import capture_navigation_timing, capture_web_vitals, measure_action
+from core.timing import capture_navigation_timing, capture_web_vitals, measure_action, wait_for_selector
 from data.scenario_loader import SingleItemLoadScenario, load_single_item_load_scenarios
 from pages.nav_bar_page import NavBarPage
-from pages.table_page import TablePage
-from pages.vault_page import VaultPage
+from pages.table_page import TablePage, TransactionTablePage
 
 logger = get_logger(__name__)
 
@@ -31,7 +31,7 @@ def _run_single_item_load_iteration(
     tab_name: str,
     nav_page: NavBarPage,
     table_page: TablePage,
-    vault_page: VaultPage,
+    detail_selector: str,
     console: ConsoleCapture,
 ) -> MeasurementResult:
     """Run one iteration: click first row, wait for detail, capture timings. Caller ensures list is loaded."""
@@ -39,7 +39,13 @@ def _run_single_item_load_iteration(
     network.start(page)
     with measure_action(f"{tab_name} single-item load") as wall_clock:
         table_page.click_first_table_row()
-        vault_page.wait_until_ready()
+        wait_for_selector(
+            page,
+            detail_selector,
+            state="visible",
+            timeout=60_000,
+            label=f"{tab_name} detail",
+        )
 
     network.stop()
     nav = capture_navigation_timing(page)
@@ -70,13 +76,13 @@ def test_single_item_load(
     results_collector: list,
     performance_iterations: tuple[int, int],
 ) -> None:
-    """Open list tab, click first table row, measure time until single-item page loads.
+    """Open list tab, click first table row, measure time until detail view loads.
 
     Steps:
         1. Go to the starting page so the nav bar is rendered.
-        2. Navigate to the tab (Vaults or Connected Accounts).
+        2. Navigate to the tab (Vaults, Connected Accounts, or Transactions).
         3. Wait for table rows to be visible.
-        4. Start timing, click the first row, wait for single-vault-info-widget.
+        4. Start timing, click the first row, wait for detail (vault widget or transaction sidebar).
         5. Capture navigation timing, web vitals, screenshot, and console errors.
 
     With --iterations > 1, runs the flow multiple times (discard --warmup runs)
@@ -84,9 +90,16 @@ def test_single_item_load(
     """
     total, warmup = performance_iterations
     tab_name = scenario.tab_name
+    detail_selector = get_single_item_detail_selector(tab_name)
+    if not detail_selector:
+        pytest.skip(f"No single-item detail selector configured for {tab_name}")
+
     nav_page = NavBarPage(page)
-    table_page = TablePage(page)
-    vault_page = VaultPage(page)
+    table_page = (
+        TransactionTablePage(page)
+        if tab_name == "Transactions"
+        else TablePage(page)
+    )
 
     console = ConsoleCapture()
     console.start(page)
@@ -102,15 +115,15 @@ def test_single_item_load(
         if i > 0:
             page.goto(STARTING_PAGE, wait_until="commit")
             page.wait_for_load_state("domcontentloaded")
-            nav_page.navigate_to(tab_name)
-            nav_page.wait_for_spinner_gone(tab_name)
-            table_page.wait_for_table_rows(tab_name)
+        nav_page.navigate_to(tab_name)
+        nav_page.wait_for_spinner_gone(tab_name)
+        table_page.wait_for_table_rows(tab_name)
 
         is_warmup = i < warmup
         is_last_measured = (i == total - 1) and not is_warmup
 
         result = _run_single_item_load_iteration(
-            page, tab_name, nav_page, table_page, vault_page, console,
+            page, tab_name, nav_page, table_page, detail_selector, console,
         )
 
         if is_warmup:

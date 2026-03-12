@@ -467,7 +467,7 @@ def write_markdown_report(
     lines.append("| Area | Flows |")
     lines.append("|------|--------|")
     lines.append("| Nav tabs | All sidebar tabs (Vaults, Connected Accounts, Assets, Transactions, etc.) — load + pagination |")
-    lines.append("| Single item | Vault detail, Connected account detail (click first row from list) |")
+    lines.append("| Single item | Vault detail, Connected account detail, Transaction sidebar (click first row from list) |")
     lines.append("| Login | Unauthenticated page load + form submit until dashboard |")
     lines.append("")
     lines.append("---")
@@ -744,6 +744,7 @@ def _benchmark_metric_label(action: str) -> str:
         "pagination_next": "Pagination (next-page)",
         "search": "Search",
         "sort": "Sort",
+        "single_item_load": "Single item (detail/sidebar)",
     }
     return labels.get(action, action.replace("_", " ").title())
 
