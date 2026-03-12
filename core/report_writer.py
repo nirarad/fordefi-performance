@@ -160,12 +160,14 @@ def _build_detailed_metrics_html(
         rows: list[str] = []
         for m in r._all_metrics():
             d = m.to_dict()
+            if d["sample_count"] == 0:
+                continue
             rows.append(
                 f"<tr><td>{_h(d['name'])}</td><td>{d['sample_count']}</td>"
                 f"<td>{d['median_ms']}</td><td>{d['p95_ms']}</td><td>{d['p99_ms']}</td>"
                 f"<td>{d['std_dev_ms']}</td><td>{d['min_ms']}</td><td>{d['max_ms']}</td></tr>"
             )
-        table_body = "\n".join(rows)
+        table_body = "\n".join(rows) if rows else "<tr><td colspan=\"8\">No metrics recorded (wall_clock only for in-page actions).</td></tr>"
         sections.append(
             f"<h3>{_h(r.page_name)} — {_h(r.action)}</h3>\n"
             f"<p>Console errors: {r.console_error_count}</p>\n"
@@ -187,6 +189,7 @@ def _build_detailed_metrics_html(
 <li><strong>lcp</strong> — Largest Contentful Paint: when the largest visible content element is rendered; Core Web Vital (ms).</li>
 <li><strong>cls</strong> — Cumulative Layout Shift: measure of visual stability (unwanted layout jumps); lower is better; Core Web Vital (unitless).</li>
 </ul>
+<p><strong>In-page actions</strong> (sort, search, pagination, table_render) only record <em>wall_clock</em> (and optional network). TTFB, LCP, and other navigation timings apply to full page loads (e.g. nav_tab_load), not to in-page interactions.</p>
 """
     return f"""<!DOCTYPE html>
 <html lang="en">
