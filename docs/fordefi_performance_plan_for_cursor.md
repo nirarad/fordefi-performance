@@ -91,7 +91,7 @@ If a required selector does not have a stable `data-testid`, stop and request ma
 Because the account is read-only:
 
 - Tests must **not** attempt write operations (create vault, send transaction, etc.)
-- All scenarios are observation-only: page loads, table rendering, search, sort, filter, sidebar open
+- All scenarios are observation-only: page loads, table rendering, search, sort, sidebar open
 - If any UI element is disabled or hidden due to viewer permissions, skip it gracefully and log a note
 
 ---
@@ -328,7 +328,6 @@ Define Protocol classes such as:
 - `HasTable` - pages with table content (table_selector_testid, row_selector_testid)
 - `Searchable` - pages with search (search_input_testid)
 - `Sortable` - pages with sortable columns (sort_target_testid)
-- `Filterable` - pages with filters (filter_trigger_testid)
 - `Paginated` - pages with pagination
 - `HasSidebar` - pages with detail sidebar
 
@@ -363,19 +362,16 @@ Use a dataclass-backed page spec with fields like:
 - `supports_progress_bar`
 - `supports_search`
 - `supports_sort`
-- `supports_filter`
 - `supports_pagination`
 - `supports_sidebar`
 - `search_fields`
 - `default_sort_column`
-- `default_filter_scenario`
 - `ready_selector_testid`
 - `table_selector_testid`
 - `spinner_selector_testid`
 - `progress_bar_selector_testid`
 - `search_input_testid`
 - `sort_target_testid`
-- `filter_trigger_testid`
 - `empty_state_testid`
 - `row_selector_testid`
 
@@ -596,7 +592,6 @@ nav_timing = page.evaluate("""() => {
 ### Interaction-level metrics
 
 - sort start -> sort complete
-- filter start -> filter complete
 - search start -> search complete
 - pagination click -> page stable
 - sidebar open start -> sidebar visible
@@ -680,10 +675,9 @@ For each page, execute only actions supported by that page's declared interface/
 3. measure initial load
 4. if searchable: run search
 5. if sortable: run sort
-6. if filterable: run filter
-7. if paginated: inspect first pagination interaction
-8. collect console errors
-9. save screenshot and metrics
+6. if paginated: inspect first pagination interaction
+7. collect console errors
+8. save screenshot and metrics
 
 Output:
 
@@ -717,7 +711,6 @@ action,param_key,param_value,expect_results
 search,term,My Vault,true
 search,term,nonexistent_xyz,false
 sort,column_testid,vault-name-column,asc
-filter,filter_testid,chain-filter,ethereum
 ```
 
 Lines starting with `#` are treated as comments and skipped.
@@ -753,7 +746,6 @@ Keep CSV data small and intentional. Do **not** define scenario data in Python c
 - wait for table
 - search by name/address
 - sort key column
-- apply filter if available
 
 #### Assets
 
@@ -761,7 +753,6 @@ Keep CSV data small and intentional. Do **not** define scenario data in Python c
 - wait for assets table
 - search
 - sort
-- filter
 
 #### Accounts
 
@@ -769,7 +760,6 @@ Keep CSV data small and intentional. Do **not** define scenario data in Python c
 - wait for accounts table
 - search
 - sort
-- filter
 
 #### Transactions
 
@@ -777,14 +767,13 @@ Keep CSV data small and intentional. Do **not** define scenario data in Python c
 - wait for transactions table
 - search by name/address if supported
 - sort
-- filter
 - optional sidebar open if stable selector exists
 
 #### Allowances
 
 - load page
 - wait for list
-- search / sort / filter where supported
+- search / sort where supported
 
 ### Medium priority pages
 
@@ -794,7 +783,6 @@ Keep CSV data small and intentional. Do **not** define scenario data in Python c
 - wait for table
 - search by name/address
 - sort
-- filter if present
 
 #### Transaction Policy
 
@@ -802,14 +790,14 @@ Keep CSV data small and intentional. Do **not** define scenario data in Python c
 - measure top progress bar duration
 - measure list/table ready state
 - search if present
-- sort/filter if supported
+- sort if supported
 - explicitly note lack of pagination
 
 #### AML Policy
 
 - load page
 - wait for rules list
-- search/sort/filter where supported
+- search/sort where supported
 
 ### Low priority pages
 
@@ -824,7 +812,7 @@ Use these heuristics in the report, but mark them as hypotheses unless directly 
 ### Likely bottleneck classes
 
 - missing pagination / large unbounded list
-- expensive server-side sort/filter/search
+- expensive server-side sort/search
 - repeated or redundant API calls
 - heavy client-side rendering on large datasets
 - console errors causing degraded UX or retries

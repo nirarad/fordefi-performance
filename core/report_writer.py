@@ -690,7 +690,7 @@ def _build_performance_summary_rows(by_page: dict[str, list[MeasurementResult]])
         rows.append(
             f"<tr><td>{_h(page)}</td><td>{_h(load_time)}</td>"
             f"<td class=\"{table_class}\">{_h(table_time)}</td>"
-            f"<td class=\"{sort_class}\">{_h(sort_time)}</td><td class=\"na\">—</td>"
+            f"<td class=\"{sort_class}\">{_h(sort_time)}</td>"
             f"<td class=\"{search_class}\">{_h(search_time)}</td><td>{err_count}</td></tr>"
         )
     return "\n".join(rows)
@@ -724,7 +724,6 @@ def _build_deep_dive_sections(by_page: dict[str, list[MeasurementResult]]) -> st
                 f"<tr><td>Table Render</td><td class=\"{table_class}\">{_h(table_val)}</td></tr>"
                 f"<tr><td>Pagination (next-page)</td><td class=\"{pagination_class}\">{_h(pagination_val)}</td></tr>"
                 f"<tr><td>Sort</td><td class=\"{sort_class}\">{_h(sort_val)}</td></tr>"
-                "<tr><td>Filter</td><td class=\"na\">—</td></tr>"
                 f"<tr><td>Search</td><td class=\"{search_class}\">{_h(search_val)}</td></tr>"
                 f"<tr><td>Console Errors</td><td>{err_count}</td></tr>"
             )

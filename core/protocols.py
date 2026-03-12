@@ -18,11 +18,6 @@ class Sortable(Protocol):
 
 
 @runtime_checkable
-class Filterable(Protocol):
-    filter_trigger_testid: str
-
-
-@runtime_checkable
 class Paginated(Protocol):
     pass
 
