@@ -88,6 +88,21 @@ class MeasurementResult:
         for m in self._all_metrics():
             m.compute()
 
+    def merge_in(self, other: MeasurementResult) -> None:
+        """Append samples from another result (same page/action) and take evidence from other.
+        Call compute_all() after all merges to update median, p95, std_dev, etc."""
+        self_metrics = self._all_metrics()
+        other_metrics = other._all_metrics()
+        for sm, om in zip(self_metrics, other_metrics):
+            sm.samples.extend(om.samples)
+        self.console_error_count = max(self.console_error_count, other.console_error_count)
+        self.screenshot_path = other.screenshot_path or self.screenshot_path
+        self.trace_path = other.trace_path or self.trace_path
+        self.har_path = other.har_path or self.har_path
+        self.notes = other.notes or self.notes
+        self.network_calls = other.network_calls or self.network_calls
+        self.network_summary = other.network_summary or self.network_summary
+
     def _all_metrics(self) -> list[AggregatedMetric]:
         return [
             self.wall_clock,

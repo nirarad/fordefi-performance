@@ -20,6 +20,7 @@ __all__ = [
     "write_benchmark_diff_json",
     "write_console_errors",
     "write_csv",
+    "write_detailed_metrics_report",
     "write_html_report",
     "write_json",
     "write_markdown_report",
@@ -131,6 +132,71 @@ def write_json(
         json.dump(data, f, indent=2, ensure_ascii=False)
     logger.info("JSON results written to %s", out_path)
     return out_path
+
+
+def write_detailed_metrics_report(
+    results: list[MeasurementResult],
+    run_dir: str | None = None,
+) -> tuple[str, str]:
+    """Write a separate report focused on metrics (sample_count, median, P95, std dev, etc.).
+
+    Produces:
+    - detailed_metrics_report.json: per (page_name, action) full metrics block.
+    - detailed_metrics_report.md: human-readable tables of metric statistics.
+
+    Returns (json_path, md_path).
+    """
+    base = _output_base(run_dir)
+    json_dir = _run_subdir(base, "json")
+    json_path = os.path.join(json_dir, "detailed_metrics_report.json")
+    md_path = os.path.join(base, "detailed_metrics_report.md")
+
+    entries: list[dict] = []
+    for r in results:
+        entries.append({
+            "page_name": r.page_name,
+            "action": r.action,
+            "timestamp": r.timestamp,
+            "console_error_count": r.console_error_count,
+            "metrics": {m.name: m.to_dict() for m in r._all_metrics()},
+        })
+
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(entries, f, indent=2, ensure_ascii=False)
+    logger.info("Detailed metrics JSON written to %s", json_path)
+
+    lines: list[str] = []
+    lines.append("# Detailed Metrics Report")
+    lines.append("")
+    lines.append(f"*Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}*")
+    lines.append("")
+    lines.append("Statistics across runs: sample count, median, P95, P99, std dev, min, max (ms).")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    for r in results:
+        lines.append(f"## {r.page_name} — {r.action}")
+        lines.append("")
+        lines.append("| Metric | sample_count | median_ms | p95_ms | p99_ms | std_dev_ms | min_ms | max_ms |")
+        lines.append("|--------|--------------|-----------|--------|--------|------------|--------|--------|")
+        for m in r._all_metrics():
+            d = m.to_dict()
+            lines.append(
+                f"| {d['name']} | {d['sample_count']} | {d['median_ms']} | "
+                f"{d['p95_ms']} | {d['p99_ms']} | {d['std_dev_ms']} | "
+                f"{d['min_ms']} | {d['max_ms']} |"
+            )
+        lines.append("")
+        lines.append(f"Console errors: {r.console_error_count}")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    logger.info("Detailed metrics Markdown written to %s", md_path)
+    return (json_path, md_path)
 
 
 def write_csv(
