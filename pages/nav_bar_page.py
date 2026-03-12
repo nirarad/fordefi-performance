@@ -16,22 +16,24 @@ logger = get_logger(__name__)
 
 NAV_TIMEOUT = 30_000
 
+# Site-wide loading indicator; same selector for all tabs that show a spinner.
+SPINNER_SELECTOR = ".MuiCircularProgress-circleIndeterminate"
+
 
 @dataclass(frozen=True)
 class TabConfig:
     path: str
     supports_spinner: bool
-    spinner_selector: str
     supports_table: bool
     ready_selector: str
     supports_pagination: bool = False
+    spinner_selector: str = ""  # When empty and supports_spinner, SPINNER_SELECTOR is used.
 
 
 TABS: dict[str, TabConfig] = {
     "Vaults": TabConfig(
         path="/vaults",
         supports_spinner=True,
-        spinner_selector=".MuiCircularProgress-circleIndeterminate",
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
@@ -39,7 +41,6 @@ TABS: dict[str, TabConfig] = {
     "Connected Accounts": TabConfig(
         path="/connected-accounts",
         supports_spinner=True,
-        spinner_selector=".MuiCircularProgress-circleIndeterminate",
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
@@ -47,7 +48,6 @@ TABS: dict[str, TabConfig] = {
     "Assets": TabConfig(
         path="/assets",
         supports_spinner=True,
-        spinner_selector=".MuiCircularProgress-circleIndeterminate",
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
@@ -55,7 +55,6 @@ TABS: dict[str, TabConfig] = {
     "Transactions": TabConfig(
         path="/transactions-history",
         supports_spinner=True,
-        spinner_selector=".MuiCircularProgress-circleIndeterminate",
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
@@ -63,7 +62,6 @@ TABS: dict[str, TabConfig] = {
     "Allowances": TabConfig(
         path="/allowances",
         supports_spinner=True,
-        spinner_selector=".MuiCircularProgress-circleIndeterminate",
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
@@ -71,7 +69,6 @@ TABS: dict[str, TabConfig] = {
     "Address Book": TabConfig(
         path="/address-book",
         supports_spinner=True,
-        spinner_selector=".MuiCircularProgress-circleIndeterminate",
         supports_table=True,
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
@@ -79,16 +76,27 @@ TABS: dict[str, TabConfig] = {
     "Transaction Policy": TabConfig(
         path="/transaction-policy",
         supports_spinner=False,
-        spinner_selector="",
         supports_table=False,
         ready_selector='[data-test-id="policies-rule-row-root"]',
     ),
     "AML Policy": TabConfig(
         path="/aml-policy",
         supports_spinner=False,
-        spinner_selector="",
         supports_table=False,
         ready_selector='[data-test-id="policies-rule-row-root"]',
+    ),
+    "User Management": TabConfig(
+        path="/user-management",
+        supports_spinner=True,
+        supports_table=True,
+        ready_selector=".MuiDataGrid-row",
+        supports_pagination=True,
+    ),
+    "Settings": TabConfig(
+        path="/settings",
+        supports_spinner=True,
+        supports_table=False,
+        ready_selector='[data-test-id="page-wrapper-overview-title"]',
     ),
 }
 
@@ -104,6 +112,8 @@ class NavBarSelectors:
     address_book: str = '[data-test-id="nav-bar-item-link-/address-book"], [data-test-id="nav-bar-item-link-/address-book-isActive"]'
     transaction_policy: str = '[data-test-id="nav-bar-item-link-/transaction-policy"], [data-test-id="nav-bar-item-link-/transaction-policy-isActive"]'
     aml_policy: str = '[data-test-id="nav-bar-item-link-/aml-policy"], [data-test-id="nav-bar-item-link-/aml-policy-isActive"]'
+    user_management: str = '[data-test-id="nav-bar-item-link-/user-management"], [data-test-id="nav-bar-item-link-/user-management-isActive"]'
+    settings: str = '[data-test-id="nav-bar-item-link-/settings"], [data-test-id="nav-bar-item-link-/settings-isActive"]'
 
     title_vaults: str = '[data-test-id="title-item-Vaults"]'
     title_connected_accounts: str = '[data-test-id="title-item-Connected Accounts"]'
@@ -113,6 +123,8 @@ class NavBarSelectors:
     title_address_book: str = '[data-test-id="title-item-Address Book"]'
     title_transaction_policy: str = '[data-test-id="title-item-Transaction Policy"]'
     title_aml_policy: str = '[data-test-id="title-item-AML Policy"]'
+    title_user_management: str = '[data-test-id="title-item-User Management"]'
+    title_settings: str = '[data-test-id="title-item-Settings"]'
 
     next_page_button: str = '[data-test-id="chevron-right-icon"]'
 
@@ -182,6 +194,14 @@ class NavBarPage:
     def aml_policy_link(self) -> Locator:
         return self.page.locator(self.selectors.aml_policy)
 
+    @property
+    def user_management_link(self) -> Locator:
+        return self.page.locator(self.selectors.user_management)
+
+    @property
+    def settings_link(self) -> Locator:
+        return self.page.locator(self.selectors.settings)
+
     # -- navigation helpers --------------------------------------------------
 
     def navigate_to(self, tab_name: str) -> None:
@@ -215,15 +235,22 @@ class NavBarPage:
     def navigate_to_aml_policy(self) -> None:
         self.navigate_to("AML Policy")
 
+    def navigate_to_user_management(self) -> None:
+        self.navigate_to("User Management")
+
+    def navigate_to_settings(self) -> None:
+        self.navigate_to("Settings")
+
     # -- wait helpers --------------------------------------------------------
 
     def wait_for_spinner_gone(self, tab_name: str, timeout: int = 60_000) -> float | None:
         """Wait for the tab's spinner to disappear. Returns ms or None if no spinner."""
         config = self.get_tab_config(tab_name)
-        if not config.supports_spinner or not config.spinner_selector:
+        if not config.supports_spinner:
             return None
+        selector = config.spinner_selector or SPINNER_SELECTOR
         return wait_for_selector(
-            self.page, config.spinner_selector,
+            self.page, selector,
             state="hidden", timeout=timeout,
             label=f"{tab_name} spinner",
         )
