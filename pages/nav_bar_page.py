@@ -76,6 +76,20 @@ TABS: dict[str, TabConfig] = {
         ready_selector=".MuiDataGrid-row",
         supports_pagination=True,
     ),
+    "Transaction Policy": TabConfig(
+        path="/transaction-policy",
+        supports_spinner=False,
+        spinner_selector="",
+        supports_table=False,
+        ready_selector='[data-test-id="policies-rule-row-root"]',
+    ),
+    "AML Policy": TabConfig(
+        path="/aml-policy",
+        supports_spinner=False,
+        spinner_selector="",
+        supports_table=False,
+        ready_selector='[data-test-id="policies-rule-row-root"]',
+    ),
 }
 
 
@@ -88,6 +102,8 @@ class NavBarSelectors:
     transactions: str = '[data-test-id="nav-bar-item-link-/transactions-history"], [data-test-id="nav-bar-item-link-/transactions-history-isActive"]'
     allowances: str = '[data-test-id="nav-bar-item-link-/allowances"], [data-test-id="nav-bar-item-link-/allowances-isActive"]'
     address_book: str = '[data-test-id="nav-bar-item-link-/address-book"], [data-test-id="nav-bar-item-link-/address-book-isActive"]'
+    transaction_policy: str = '[data-test-id="nav-bar-item-link-/transaction-policy"], [data-test-id="nav-bar-item-link-/transaction-policy-isActive"]'
+    aml_policy: str = '[data-test-id="nav-bar-item-link-/aml-policy"], [data-test-id="nav-bar-item-link-/aml-policy-isActive"]'
 
     title_vaults: str = '[data-test-id="title-item-Vaults"]'
     title_connected_accounts: str = '[data-test-id="title-item-Connected Accounts"]'
@@ -95,6 +111,8 @@ class NavBarSelectors:
     title_transactions: str = '[data-test-id="title-item-Transactions"]'
     title_allowances: str = '[data-test-id="title-item-Allowances"]'
     title_address_book: str = '[data-test-id="title-item-Address Book"]'
+    title_transaction_policy: str = '[data-test-id="title-item-Transaction Policy"]'
+    title_aml_policy: str = '[data-test-id="title-item-AML Policy"]'
 
     next_page_button: str = '[data-test-id="chevron-right-icon"]'
 
@@ -156,6 +174,14 @@ class NavBarPage:
     def address_book_link(self) -> Locator:
         return self.page.locator(self.selectors.address_book)
 
+    @property
+    def transaction_policy_link(self) -> Locator:
+        return self.page.locator(self.selectors.transaction_policy)
+
+    @property
+    def aml_policy_link(self) -> Locator:
+        return self.page.locator(self.selectors.aml_policy)
+
     # -- navigation helpers --------------------------------------------------
 
     def navigate_to(self, tab_name: str) -> None:
@@ -182,6 +208,12 @@ class NavBarPage:
 
     def navigate_to_address_book(self) -> None:
         self.navigate_to("Address Book")
+
+    def navigate_to_transaction_policy(self) -> None:
+        self.navigate_to("Transaction Policy")
+
+    def navigate_to_aml_policy(self) -> None:
+        self.navigate_to("AML Policy")
 
     # -- wait helpers --------------------------------------------------------
 
