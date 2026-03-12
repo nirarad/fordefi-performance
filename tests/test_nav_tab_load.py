@@ -98,6 +98,15 @@ def test_nav_tab_load(
     )
     results_collector.append(load_result)
 
+    if rows_ms is not None:
+        table_result = MeasurementResult.from_wall_clock(
+            tab_name,
+            "table_render",
+            rows_ms,
+            network_capture=None,
+        )
+        results_collector.append(table_result)
+
     logger.info(
         "%s nav-tab load — wall: %.0f ms | TTFB: %.0f ms | LCP: %.0f ms | errors: %d",
         tab_name,
@@ -116,11 +125,24 @@ def test_nav_tab_load(
         and first_row_id is not None
         and table_page.can_paginate_next()
     ):
+        network_pg = NetworkCapture()
+        network_pg.start(page)
         with measure_action(f"{tab_name} pagination next-page") as pg_clock:
             table_page.click_next_page()
             table_page.wait_for_page_change(tab_name, first_row_id)
 
-        take_screenshot(page, tab_slug, "pagination_next")
+        network_pg.stop()
+        pg_screenshot = take_screenshot(page, tab_slug, "pagination_next")
+
+        pagination_result = MeasurementResult.from_wall_clock(
+            tab_name,
+            "pagination_next",
+            pg_clock[0],
+            network_capture=network_pg,
+            screenshot_path=pg_screenshot,
+        )
+        results_collector.append(pagination_result)
+
         logger.info("%s pagination next — wall: %.0f ms", tab_name, pg_clock[0])
     elif config.supports_pagination:
         logger.warning("%s: next-page button not available — skipping pagination", tab_name)

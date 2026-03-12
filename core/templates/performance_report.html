@@ -69,7 +69,16 @@ tr:nth-child(even) { background: #f9f9f9; }
 {benchmark_section}
 <hr>
 
-<h2>6. Console Errors</h2>
+<h2>6. Network Summary</h2>
+<table>
+<thead><tr><th>Page</th><th>Requests</th><th>Total Duration (ms)</th><th>Slow (&gt;1s)</th><th>Failed (4xx/5xx)</th></tr></thead>
+<tbody>
+{network_summary_rows}
+</tbody>
+</table>
+<hr>
+
+<h2>7. Console Errors</h2>
 <table>
 <thead><tr><th>Page</th><th>Error Count</th><th>Example Error</th></tr></thead>
 <tbody>
@@ -78,7 +87,7 @@ tr:nth-child(even) { background: #f9f9f9; }
 </table>
 <hr>
 
-<h2>7. Artifacts</h2>
+<h2>8. Artifacts</h2>
 <table>
 <thead><tr><th>Artifact</th><th>Location</th></tr></thead>
 <tbody>
@@ -87,7 +96,7 @@ tr:nth-child(even) { background: #f9f9f9; }
 </table>
 <hr>
 
-<h2>8. Conclusion</h2>
+<h2>9. Conclusion</h2>
 <p>{conclusion}</p>
 
 </body>

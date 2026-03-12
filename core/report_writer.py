@@ -414,6 +414,22 @@ def _get_console_errors(results_for_page: list[MeasurementResult]) -> int:
     return max(r.console_error_count for r in results_for_page)
 
 
+def _get_table_render_time(results_for_page: list[MeasurementResult]) -> str:
+    """Table render = table_render wall_clock, if measured."""
+    for r in results_for_page:
+        if r.action == "table_render":
+            return f"{r.wall_clock.median:.0f} ms"
+    return "—"
+
+
+def _get_pagination_time(results_for_page: list[MeasurementResult]) -> str:
+    """Pagination render = pagination_next wall_clock, if measured."""
+    for r in results_for_page:
+        if r.action == "pagination_next":
+            return f"{r.wall_clock.median:.0f} ms"
+    return "—"
+
+
 REPORT_TEMPLATE_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "templates", "performance_report.html"
 )
@@ -424,9 +440,12 @@ def _build_performance_summary_rows(by_page: dict[str, list[MeasurementResult]])
     for page in PERFORMANCE_SUMMARY_PAGES:
         page_rows = by_page.get(page, [])
         load_time = _get_load_time(page_rows) if page_rows else "—"
+        table_time = _get_table_render_time(page_rows) if page_rows else "—"
+        table_class = "" if table_time != "—" else "na"
         err_count = _get_console_errors(page_rows) if page_rows else 0
         rows.append(
-            f"<tr><td>{_h(page)}</td><td>{_h(load_time)}</td><td class=\"na\">—</td>"
+            f"<tr><td>{_h(page)}</td><td>{_h(load_time)}</td>"
+            f"<td class=\"{table_class}\">{_h(table_time)}</td>"
             f"<td class=\"na\">—</td><td class=\"na\">—</td><td class=\"na\">—</td><td>{err_count}</td></tr>"
         )
     return "\n".join(rows)
@@ -437,18 +456,24 @@ def _build_deep_dive_sections(by_page: dict[str, list[MeasurementResult]]) -> st
     for page in DEEP_DIVE_PAGES:
         page_rows = by_page.get(page, [])
         load_val = _get_load_time(page_rows) if page_rows else "—"
+        table_val = _get_table_render_time(page_rows) if page_rows else "—"
+        pagination_val = _get_pagination_time(page_rows) if page_rows else "—"
+        table_class = "" if table_val != "—" else "na"
+        pagination_class = "" if pagination_val != "—" else "na"
         err_count = _get_console_errors(page_rows) if page_rows else 0
         parts.append(f"<h3>{_h(page)}</h3>")
         if page == "Transaction Policy":
             metric_rows = (
                 f"<tr><td>Page Load</td><td>{_h(load_val)}</td></tr>"
-                "<tr><td>Table Render</td><td class=\"na\">—</td></tr>"
+                f"<tr><td>Table Render</td><td class=\"{table_class}\">{_h(table_val)}</td></tr>"
+                f"<tr><td>Pagination (next-page)</td><td class=\"{pagination_class}\">{_h(pagination_val)}</td></tr>"
                 f"<tr><td>Console Errors</td><td>{err_count}</td></tr>"
             )
         else:
             metric_rows = (
                 f"<tr><td>Page Load</td><td>{_h(load_val)}</td></tr>"
-                "<tr><td>Table Render</td><td class=\"na\">—</td></tr>"
+                f"<tr><td>Table Render</td><td class=\"{table_class}\">{_h(table_val)}</td></tr>"
+                f"<tr><td>Pagination (next-page)</td><td class=\"{pagination_class}\">{_h(pagination_val)}</td></tr>"
                 "<tr><td>Sort</td><td class=\"na\">—</td></tr>"
                 "<tr><td>Filter</td><td class=\"na\">—</td></tr>"
                 "<tr><td>Search</td><td class=\"na\">—</td></tr>"
@@ -491,7 +516,32 @@ def _build_console_errors_rows(by_page: dict[str, list[MeasurementResult]]) -> s
     )
 
 
-def _build_artifacts_rows(json_path: str) -> str:
+def _get_network_summary_for_page(results_for_page: list[MeasurementResult]) -> dict:
+    """Return network_summary for primary load action (nav_tab_load or page_load)."""
+    for r in results_for_page:
+        if r.action in ("nav_tab_load", "page_load"):
+            return r.network_summary or {}
+    return {}
+
+
+def _build_network_summary_rows(by_page: dict[str, list[MeasurementResult]]) -> str:
+    """HTML rows for Network Summary section."""
+    rows: list[str] = []
+    for page in PERFORMANCE_SUMMARY_PAGES:
+        page_rows = by_page.get(page, [])
+        ns = _get_network_summary_for_page(page_rows) if page_rows else {}
+        req = ns.get("request_count", "—")
+        total = ns.get("total_duration_ms", "—")
+        slow = ns.get("slow_count", "—")
+        failed = ns.get("failed_count", "—")
+        rows.append(
+            f"<tr><td>{_h(page)}</td><td>{_h(req)}</td><td>{_h(total)}</td>"
+            f"<td>{_h(slow)}</td><td>{_h(failed)}</td></tr>"
+        )
+    return "\n".join(rows)
+
+
+def _build_artifacts_rows(json_path: str, html_path: str) -> str:
     traces_dir = os.path.join(ARTIFACTS_DIR, "traces")
     screenshots_dir = os.path.join(ARTIFACTS_DIR, "screenshots")
     har_dir = os.path.join(ARTIFACTS_DIR, "har")
@@ -500,7 +550,8 @@ def _build_artifacts_rows(json_path: str) -> str:
         f"<tr><td>Playwright traces</td><td>{_h(traces_dir)}</td></tr>",
         f"<tr><td>Screenshots</td><td>{_h(screenshots_dir)}</td></tr>",
         f"<tr><td>HAR files</td><td>{_h(har_dir)}</td></tr>",
-        f"<tr><td>Raw metrics</td><td>{_h(raw_metrics)}</td></tr>",
+        f"<tr><td>JSON metrics</td><td>{_h(raw_metrics)}</td></tr>",
+        f"<tr><td>HTML report</td><td>{_h(html_path)}</td></tr>",
     ])
 
 
@@ -509,7 +560,6 @@ def write_html_report(
     report_path: str | None = None,
     comparison: list[RowComparison] | None = None,
     json_path: str = "",
-    csv_path: str = "",
     run_mode: str = "measure",
 ) -> str:
     """Generate performance investigation report as HTML (concise template)."""
@@ -534,6 +584,13 @@ def write_html_report(
     else:
         conclusion = f"Median page load across flows: {median_load}. Total console errors captured: {total_errors}."
 
+    # Prepare artifact path for a copy of the HTML report
+    html_artifacts_dir = os.path.join(ARTIFACTS_DIR, "html")
+    os.makedirs(html_artifacts_dir, exist_ok=True)
+    html_artifact_path = os.path.join(
+        html_artifacts_dir, f"{_ts_prefix()}_performance_report.html"
+    )
+
     with open(REPORT_TEMPLATE_PATH, encoding="utf-8") as f:
         raw_template = f.read()
 
@@ -547,6 +604,7 @@ def write_html_report(
         "performance_summary_rows",
         "deep_dive_sections",
         "benchmark_section",
+        "network_summary_rows",
         "console_errors_rows",
         "artifacts_rows",
         "conclusion",
@@ -561,12 +619,21 @@ def write_html_report(
         performance_summary_rows=_build_performance_summary_rows(by_page),
         deep_dive_sections=_build_deep_dive_sections(by_page),
         benchmark_section=_build_benchmark_section(comparison),
+        network_summary_rows=_build_network_summary_rows(by_page),
         console_errors_rows=_build_console_errors_rows(by_page),
-        artifacts_rows=_build_artifacts_rows(json_path),
+        artifacts_rows=_build_artifacts_rows(json_path, html_artifact_path),
         conclusion=_h(conclusion),
     )
 
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
+    # Keep a copy under artifacts/html for easier archiving
+    try:
+        import shutil
+
+        shutil.copyfile(out_path, html_artifact_path)
+        logger.info("HTML report copied to %s", html_artifact_path)
+    except Exception as exc:  # pragma: no cover - best-effort copy
+        logger.warning("Failed to copy HTML report to artifacts/html: %s", exc)
     logger.info("HTML report written to %s", out_path)
     return out_path
