@@ -33,7 +33,7 @@ REPORTS_BASE = "reports"
 BASE_URL = "https://app.preprod.fordefi.com"
 
 # Actions exceeding this time (ms) are marked in red in the summary table.
-MAX_ACTION_TIME_MS = 5000  # 5 seconds
+MAX_ACTION_TIME_MS = 2000  # 2 seconds
 
 _cached_default_run_dir: str | None = None
 

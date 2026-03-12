@@ -123,6 +123,7 @@ def browser_context_args(browser_context_args, request):
         "ignore_https_errors": True,
         "base_url": BASE_URL,
         "record_har_path": record_har_path,
+        "record_har_content": "omit",
     }
     if os.path.exists(AUTH_STATE_PATH):
         context_args["storage_state"] = AUTH_STATE_PATH
@@ -183,8 +184,11 @@ def _auth_context_session(
         yield context
     finally:
         stop_tracing(context, "auth", "session")
-        context.close()
-        logger.info("Closed authenticated session context")
+        try:
+            context.close()
+            logger.info("Closed authenticated session context")
+        except Exception as e:
+            logger.warning("Error closing session context (HAR/trace may be large): %s", e)
 
 
 @pytest.fixture(scope="module")
@@ -201,8 +205,11 @@ def _auth_context_module(
         yield context
     finally:
         stop_tracing(context, "auth", "module")
-        context.close()
-        logger.info("Closed authenticated context")
+        try:
+            context.close()
+            logger.info("Closed authenticated context")
+        except Exception as e:
+            logger.warning("Error closing context (HAR/trace may be large): %s", e)
 
 
 @pytest.fixture()
@@ -246,8 +253,11 @@ def _unauth_context_session(browser: Browser) -> Generator[BrowserContext, None,
         yield context
     finally:
         stop_tracing(context, "unauth", "session")
-        context.close()
-        logger.info("Closed unauthenticated session context")
+        try:
+            context.close()
+            logger.info("Closed unauthenticated session context")
+        except Exception as e:
+            logger.warning("Error closing unauthenticated session context: %s", e)
 
 
 @pytest.fixture(scope="module")
@@ -264,8 +274,11 @@ def _unauth_context_module(browser: Browser) -> Generator[BrowserContext, None, 
         yield context
     finally:
         stop_tracing(context, "unauth", "module")
-        context.close()
-        logger.info("Closed unauthenticated context")
+        try:
+            context.close()
+            logger.info("Closed unauthenticated context")
+        except Exception as e:
+            logger.warning("Error closing unauthenticated context: %s", e)
 
 
 @pytest.fixture()
