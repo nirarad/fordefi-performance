@@ -3,7 +3,7 @@ from typing import Generator
 
 import pytest
 from dotenv import load_dotenv
-from playwright.sync_api import Browser, Page
+from playwright.sync_api import Browser, BrowserContext, Page
 
 from core.logger import get_logger
 from pages.login_page import LoginPage
@@ -34,7 +34,7 @@ def pytest_addoption(parser):
         "--single-session",
         action="store_true",
         default=False,
-        help="Reuse one browser context for all tests (no per-test isolation)",
+        help="Reuse a single page (tab) across all tests instead of a fresh tab per test",
     )
 
 
@@ -82,95 +82,115 @@ def ensure_authenticated(browser: Browser) -> None:
         viewport={"width": 1280, "height": 720},
         ignore_https_errors=True,
     )
-    page = context.new_page()
-    page.goto(BASE_URL)
+    pg = context.new_page()
+    pg.goto(BASE_URL)
 
-    login_page = LoginPage(page)
+    login_page = LoginPage(pg)
     login_page.login(username, password)
 
     logger.info("Waiting for post-login navigation")
-    page.wait_for_url(f"{BASE_URL}/**", timeout=30_000)
+    pg.wait_for_url(f"{BASE_URL}/**", timeout=30_000)
 
     context.storage_state(path=AUTH_STATE_PATH)
     logger.info("Auth state saved to %s", AUTH_STATE_PATH)
-    page.close()
+    pg.close()
+    context.close()
+
+
+# ---------------------------------------------------------------------------
+# Authenticated page — single browser window for the entire run
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def _auth_context(
+    browser: Browser,
+    browser_context_args: dict,
+) -> Generator[BrowserContext, None, None]:
+    """Session-scoped authenticated context — one browser window for all tests."""
+    context = browser.new_context(**browser_context_args)
+    yield context
     context.close()
 
 
 @pytest.fixture(scope="session")
 def _shared_page(
-    browser: Browser,
-    browser_context_args: dict,
+    _auth_context: BrowserContext,
     request: pytest.FixtureRequest,
 ) -> Generator[Page | None, None, None]:
-    """Session-scoped authenticated page, created only in --single-session mode."""
+    """Session-scoped page reused across all tests (--single-session only)."""
     if not request.config.getoption("--single-session"):
         yield None
         return
-    logger.info("Single-session mode: creating shared authenticated context")
-    context = browser.new_context(**browser_context_args)
-    pg = context.new_page()
+    logger.info("Single-session mode: creating shared authenticated page")
+    pg = _auth_context.new_page()
     yield pg
     pg.close()
+
+
+@pytest.fixture()
+def page(
+    _shared_page: Page | None,
+    _auth_context: BrowserContext,
+) -> Generator[Page, None, None]:
+    """Per-test authenticated page.
+
+    --single-session : reuses the single session-scoped page (same tab).
+    default          : opens a fresh tab inside the session-scoped context,
+                       closed after the test.  The browser window stays open.
+    """
+    if _shared_page is not None:
+        yield _shared_page
+        return
+    pg = _auth_context.new_page()
+    yield pg
+    pg.close()
+
+
+# ---------------------------------------------------------------------------
+# Unauthenticated page — single browser window for the entire run
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def _unauth_context(
+    browser: Browser,
+) -> Generator[BrowserContext, None, None]:
+    """Session-scoped unauthenticated context — one browser window."""
+    context = browser.new_context(
+        viewport={"width": 1280, "height": 720},
+        ignore_https_errors=True,
+    )
+    yield context
     context.close()
 
 
 @pytest.fixture(scope="session")
 def _shared_unauth_page(
-    browser: Browser,
+    _unauth_context: BrowserContext,
     request: pytest.FixtureRequest,
 ) -> Generator[Page | None, None, None]:
-    """Session-scoped unauthenticated page, created only in --single-session mode."""
+    """Session-scoped unauth page reused across all tests (--single-session only)."""
     if not request.config.getoption("--single-session"):
         yield None
         return
-    logger.info("Single-session mode: creating shared unauthenticated context")
-    context = browser.new_context(
-        viewport={"width": 1280, "height": 720},
-        ignore_https_errors=True,
-    )
-    pg = context.new_page()
+    logger.info("Single-session mode: creating shared unauthenticated page")
+    pg = _unauth_context.new_page()
     yield pg
     pg.close()
-    context.close()
-
-
-@pytest.fixture()
-def page(
-    browser: Browser,
-    browser_context_args: dict,
-    _shared_page: Page | None,
-) -> Generator[Page, None, None]:
-    """Override pytest-playwright's page fixture to support --single-session."""
-    if _shared_page is not None:
-        yield _shared_page
-        return
-    context = browser.new_context(**browser_context_args)
-    pg = context.new_page()
-    yield pg
-    pg.close()
-    context.close()
 
 
 @pytest.fixture()
 def unauthenticated_page(
-    browser: Browser,
     _shared_unauth_page: Page | None,
+    _unauth_context: BrowserContext,
 ) -> Generator[Page, None, None]:
-    """Provide a page with no saved session for login benchmarking.
+    """Per-test unauthenticated page for login benchmarking.
 
-    In --single-session mode the same page is reused across login tests.
-    Note: tests run in order, so later tests see state left by earlier ones
-    (e.g. an authenticated session after test_login_flow completes).
+    --single-session : reuses the single session-scoped page (same tab).
+    default          : opens a fresh tab, closed after the test.
     """
     if _shared_unauth_page is not None:
         yield _shared_unauth_page
         return
-    context = browser.new_context(
-        viewport={"width": 1280, "height": 720},
-        ignore_https_errors=True,
-    )
-    pg = context.new_page()
+    pg = _unauth_context.new_page()
     yield pg
     pg.close()
-    context.close()

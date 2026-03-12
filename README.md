@@ -71,8 +71,11 @@ pytest
 ### Specific test files
 
 ```bash
-# Page load (Vaults)
-pytest tests/test_page_load.py
+# Nav-tab load (all tabs)
+pytest tests/test_nav_tab_load.py
+
+# Pagination only
+pytest tests/test_nav_tab_load.py -m pagination
 
 # Login benchmarks
 pytest tests/test_login_performance.py
@@ -106,7 +109,7 @@ pytest --headed
 
 ```bash
 # Quick headed run, single session
-pytest tests/test_page_load.py --headed --single-session
+pytest tests/test_nav_tab_load.py --headed --single-session
 
 # Benchmark against a previous baseline
 pytest --mode benchmark --baseline results/baseline.json
@@ -119,7 +122,8 @@ pytest tests/test_login_performance.py --headed
 
 | Test | File | What it measures |
 |---|---|---|
-| `test_vaults_page_load` | `tests/test_page_load.py` | Full Vaults page load: navigation, spinner disappearance, table render, TTFB, LCP, CLS, console errors. |
+| `test_nav_tab_load` | `tests/test_nav_tab_load.py` | DDT page load for every nav-bar tab: spinner disappearance, table render, TTFB, LCP, CLS, console errors. |
+| `test_nav_tab_pagination` | `tests/test_nav_tab_load.py` | Click next-page on each tab and measure table reload time. Skips tabs with a single page. |
 | `test_login_page_load` | `tests/test_login_performance.py` | Time from navigation to the Auth0 login form being rendered. |
 | `test_login_flow` | `tests/test_login_performance.py` | End-to-end login: page load + credential entry + post-login redirect. Reports page load and login submit times separately. |
 
@@ -147,7 +151,7 @@ fordefi-performance/
 │   └── save_auth_state.py  # Manual auth state generator
 ├── tests/
 │   ├── test_login_performance.py
-│   └── test_page_load.py
+│   └── test_nav_tab_load.py
 ├── .env.example
 ├── conftest.py             # Fixtures, CLI options, auth management
 ├── pytest.ini
@@ -165,6 +169,7 @@ Defined in `pytest.ini`:
 | `deep_dive` | Repeated multi-iteration measurement on hotspot pages |
 | `benchmark` | Compare current results against a previous baseline |
 | `smoke` | Quick sanity checks before a full performance run |
+| `pagination` | Pagination performance tests (next-page table reload) |
 
 ## Artifacts
 
