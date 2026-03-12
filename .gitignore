@@ -17,14 +17,8 @@ auth/storage_state.json
 test-results/
 playwright-report/
 
-# Generated artifacts (keep .gitkeep files)
-artifacts/screenshots/*
-artifacts/traces/*
-artifacts/har/*
-artifacts/json/*
-artifacts/html/*
-reports/*.md
-reports/*.html
+# Timestamped run folders (report + all assets per run)
+reports/
 !**/.gitkeep
 
 # Python cache

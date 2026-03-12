@@ -15,9 +15,64 @@ from core.metrics import MeasurementResult
 
 logger = get_logger(__name__)
 
-ARTIFACTS_DIR = "artifacts"
-REPORTS_DIR = "reports"
+__all__ = [
+    "write_benchmark_diff_csv",
+    "write_benchmark_diff_json",
+    "write_console_errors",
+    "write_csv",
+    "write_html_report",
+    "write_json",
+    "write_markdown_report",
+]
+
+REPORTS_BASE = "reports"
 BASE_URL = "https://app.preprod.fordefi.com"
+
+_cached_default_run_dir: str | None = None
+
+
+def _default_run_dir() -> str:
+    """Return a timestamped run directory under reports/ (cached per process)."""
+    global _cached_default_run_dir
+    if _cached_default_run_dir is not None:
+        return _cached_default_run_dir
+    _cached_default_run_dir = os.path.join(REPORTS_BASE, _ts_prefix())
+    os.makedirs(_cached_default_run_dir, exist_ok=True)
+    return _cached_default_run_dir
+
+
+def _output_base(run_dir: str | None) -> str:
+    """Base directory for this run; uses run_dir or a default timestamped dir."""
+    return run_dir if run_dir is not None else _default_run_dir()
+
+
+def _run_subdir(base: str, subdir: str) -> str:
+    """Return path for a subdir under the run base and ensure it exists."""
+    out_dir = os.path.join(base, subdir)
+    os.makedirs(out_dir, exist_ok=True)
+    return out_dir
+
+
+def _resolve_output_path(
+    path: str | None,
+    out_dir: str,
+    default_filename: str,
+    run_dir: str | None,
+) -> str:
+    """Resolve output file path: explicit path, run-dir default, or timestamped filename."""
+    if path is not None:
+        return path
+    if run_dir is not None:
+        return os.path.join(out_dir, default_filename)
+    return os.path.join(out_dir, f"{_ts_prefix()}_{default_filename}")
+
+
+def _report_file_path(base: str, filename: str, report_path: str | None) -> str:
+    """Path for a report file in the run base, or an explicit report_path."""
+    if report_path is not None:
+        return report_path
+    return os.path.join(base, filename)
+
 
 # Page order for Performance Summary and Deep Dive (template order).
 PERFORMANCE_SUMMARY_PAGES = [
@@ -57,26 +112,31 @@ def _ts_prefix() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def write_json(results: list[MeasurementResult], path: str | None = None) -> str:
+def write_json(
+    results: list[MeasurementResult],
+    path: str | None = None,
+    run_dir: str | None = None,
+) -> str:
     """Serialize results to JSON. Returns the file path."""
-    out_dir = os.path.join(ARTIFACTS_DIR, "json")
-    os.makedirs(out_dir, exist_ok=True)
-    if path is None:
-        path = os.path.join(out_dir, f"{_ts_prefix()}_results.json")
+    base = _output_base(run_dir)
+    out_dir = _run_subdir(base, "json")
+    out_path = _resolve_output_path(path, out_dir, "results.json", run_dir)
     data = [r.to_dict() for r in results]
-    with open(path, "w", encoding="utf-8") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-    logger.info("JSON results written to %s", path)
-    return path
+    logger.info("JSON results written to %s", out_path)
+    return out_path
 
 
-def write_csv(results: list[MeasurementResult], path: str | None = None) -> str:
+def write_csv(
+    results: list[MeasurementResult],
+    path: str | None = None,
+    run_dir: str | None = None,
+) -> str:
     """Flatten results into a CSV table. Returns the file path."""
-    out_dir = os.path.join(ARTIFACTS_DIR, "csv")
-    os.makedirs(out_dir, exist_ok=True)
-    if path is None:
-        path = os.path.join(out_dir, f"{_ts_prefix()}_results.csv")
-
+    base = _output_base(run_dir)
+    out_dir = _run_subdir(base, "csv")
+    out_path = _resolve_output_path(path, out_dir, "results.csv", run_dir)
     fieldnames = [
         "page_name",
         "action",
@@ -121,45 +181,54 @@ def write_csv(results: list[MeasurementResult], path: str | None = None) -> str:
             "notes": r.notes,
         }
 
-    with open(path, "w", newline="", encoding="utf-8") as f:
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for r in results:
             writer.writerow(_network_row(r))
-    logger.info("CSV results written to %s", path)
-    return path
+    logger.info("CSV results written to %s", out_path)
+    return out_path
 
 
-def write_console_errors(entries: list[dict], path: str | None = None) -> str:
+def write_console_errors(
+    entries: list[dict],
+    path: str | None = None,
+    run_dir: str | None = None,
+) -> str:
     """Write console error entries to a JSON file."""
-    out_dir = os.path.join(ARTIFACTS_DIR, "json")
-    os.makedirs(out_dir, exist_ok=True)
-    if path is None:
-        path = os.path.join(out_dir, f"{_ts_prefix()}_console_errors.json")
-    with open(path, "w", encoding="utf-8") as f:
+    base = _output_base(run_dir)
+    out_dir = _run_subdir(base, "json")
+    out_path = _resolve_output_path(path, out_dir, "console_errors.json", run_dir)
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(entries, f, indent=2, ensure_ascii=False)
-    logger.info("Console errors written to %s", path)
-    return path
+    logger.info("Console errors written to %s", out_path)
+    return out_path
 
 
-def write_benchmark_diff_json(comparison_data: list[dict], path: str | None = None) -> str:
+def write_benchmark_diff_json(
+    comparison_data: list[dict],
+    path: str | None = None,
+    run_dir: str | None = None,
+) -> str:
     """Write benchmark comparison to JSON. comparison_data from benchmark.comparison_to_dict."""
-    out_dir = os.path.join(ARTIFACTS_DIR, "json")
-    os.makedirs(out_dir, exist_ok=True)
-    if path is None:
-        path = os.path.join(out_dir, f"{_ts_prefix()}_benchmark_diff.json")
-    with open(path, "w", encoding="utf-8") as f:
+    base = _output_base(run_dir)
+    out_dir = _run_subdir(base, "json")
+    out_path = _resolve_output_path(path, out_dir, "benchmark_diff.json", run_dir)
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(comparison_data, f, indent=2, ensure_ascii=False)
-    logger.info("Benchmark diff JSON written to %s", path)
-    return path
+    logger.info("Benchmark diff JSON written to %s", out_path)
+    return out_path
 
 
-def write_benchmark_diff_csv(comparison_data: list[dict], path: str | None = None) -> str:
+def write_benchmark_diff_csv(
+    comparison_data: list[dict],
+    path: str | None = None,
+    run_dir: str | None = None,
+) -> str:
     """Write benchmark comparison summary to CSV (one row per page+action, key metrics)."""
-    out_dir = os.path.join(ARTIFACTS_DIR, "csv")
-    os.makedirs(out_dir, exist_ok=True)
-    if path is None:
-        path = os.path.join(out_dir, f"{_ts_prefix()}_benchmark_diff.csv")
+    base = _output_base(run_dir)
+    out_dir = _run_subdir(base, "csv")
+    out_path = _resolve_output_path(path, out_dir, "benchmark_diff.csv", run_dir)
     fieldnames = [
         "page_name", "action", "row_status",
         "wall_clock_baseline_ms", "wall_clock_current_ms", "wall_clock_pct_change", "wall_clock_status",
@@ -192,12 +261,12 @@ def write_benchmark_diff_csv(comparison_data: list[dict], path: str | None = Non
             "console_errors_baseline": c.get("console_errors_baseline", ""),
             "console_errors_current": c.get("console_errors_current", ""),
         })
-    with open(path, "w", newline="", encoding="utf-8") as f:
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
-    logger.info("Benchmark diff CSV written to %s", path)
-    return path
+    logger.info("Benchmark diff CSV written to %s", out_path)
+    return out_path
 
 
 def write_markdown_report(
@@ -206,11 +275,12 @@ def write_markdown_report(
     comparison: list[RowComparison] | None = None,
     json_path: str = "",
     csv_path: str = "",
+    run_dir: str | None = None,
 ) -> str:
     """Generate performance investigation report (markdown)."""
-    os.makedirs(REPORTS_DIR, exist_ok=True)
-    if report_path is None:
-        report_path = os.path.join(REPORTS_DIR, "performance_investigation_report.md")
+    base = _output_base(run_dir)
+    os.makedirs(base, exist_ok=True)
+    report_path = _report_file_path(base, "performance_investigation_report.md", report_path)
     lines: list[str] = []
 
     lines.append("# Fordefi Preprod — Performance Investigation Report")
@@ -347,8 +417,8 @@ def write_markdown_report(
     # 11. Benchmark / Regression Design
     lines.append("## 11. Benchmark / Regression Design")
     lines.append("")
-    lines.append("- **Measure mode:** `pytest -m performance --mode=measure` — runs flows and writes results to `artifacts/json` and `artifacts/csv`.")
-    lines.append("- **Benchmark mode:** `pytest -m performance --mode=benchmark --baseline=artifacts/json/<baseline>.json` — runs flows, compares to baseline, writes diff JSON/CSV and report.")
+    lines.append("- **Measure mode:** `pytest -m performance --mode=measure` — runs flows and writes results to a timestamped run dir under `reports/<timestamp>/` (json, csv, HTML).")
+    lines.append("- **Benchmark mode:** `pytest -m performance --mode=benchmark --baseline=reports/<run>/json/results.json` — runs flows, compares to baseline, writes diff JSON/CSV and report.")
     lines.append("- **Thresholds:** Warning >10%, critical >20% (config in `configs/thresholds.py`).")
     lines.append("")
     lines.append("---")
@@ -541,17 +611,23 @@ def _build_network_summary_rows(by_page: dict[str, list[MeasurementResult]]) -> 
     return "\n".join(rows)
 
 
-def _build_artifacts_rows(json_path: str, html_path: str) -> str:
-    traces_dir = os.path.join(ARTIFACTS_DIR, "traces")
-    screenshots_dir = os.path.join(ARTIFACTS_DIR, "screenshots")
-    har_dir = os.path.join(ARTIFACTS_DIR, "har")
-    raw_metrics = json_path or os.path.join(ARTIFACTS_DIR, "json")
+def _build_artifacts_rows(
+    json_path: str,
+    html_path: str,
+    run_dir: str | None = None,
+) -> str:
+    """Build HTML rows for artifacts table. Uses relative paths (all outputs live in run dir)."""
+    traces_dir = "traces"
+    screenshots_dir = "screenshots"
+    har_dir = "har"
+    raw_metrics = "json/results.json"
+    html_display = "performance_investigation_report.html"
     return "\n".join([
         f"<tr><td>Playwright traces</td><td>{_h(traces_dir)}</td></tr>",
         f"<tr><td>Screenshots</td><td>{_h(screenshots_dir)}</td></tr>",
         f"<tr><td>HAR files</td><td>{_h(har_dir)}</td></tr>",
         f"<tr><td>JSON metrics</td><td>{_h(raw_metrics)}</td></tr>",
-        f"<tr><td>HTML report</td><td>{_h(html_path)}</td></tr>",
+        f"<tr><td>HTML report</td><td>{_h(html_display)}</td></tr>",
     ])
 
 
@@ -561,14 +637,13 @@ def write_html_report(
     comparison: list[RowComparison] | None = None,
     json_path: str = "",
     run_mode: str = "measure",
+    run_dir: str | None = None,
 ) -> str:
     """Generate performance investigation report as HTML (concise template)."""
-    os.makedirs(REPORTS_DIR, exist_ok=True)
-    out_path: str = (
-        report_path
-        if report_path is not None
-        else os.path.join(REPORTS_DIR, "performance_investigation_report.html")
-    )
+    base = _output_base(run_dir)
+    os.makedirs(base, exist_ok=True)
+    out_path = _report_file_path(base, "performance_investigation_report.html", report_path)
+    html_artifact_path = out_path
 
     exec_date = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     git_version = _get_git_version()
@@ -583,13 +658,6 @@ def write_html_report(
         conclusion = f"Run in benchmark mode: {regressed} regressed, {improved} improved vs baseline. Median page load (current run): {median_load}. Console errors: {total_errors}."
     else:
         conclusion = f"Median page load across flows: {median_load}. Total console errors captured: {total_errors}."
-
-    # Prepare artifact path for a copy of the HTML report
-    html_artifacts_dir = os.path.join(ARTIFACTS_DIR, "html")
-    os.makedirs(html_artifacts_dir, exist_ok=True)
-    html_artifact_path = os.path.join(
-        html_artifacts_dir, f"{_ts_prefix()}_performance_report.html"
-    )
 
     with open(REPORT_TEMPLATE_PATH, encoding="utf-8") as f:
         raw_template = f.read()
@@ -621,19 +689,13 @@ def write_html_report(
         benchmark_section=_build_benchmark_section(comparison),
         network_summary_rows=_build_network_summary_rows(by_page),
         console_errors_rows=_build_console_errors_rows(by_page),
-        artifacts_rows=_build_artifacts_rows(json_path, html_artifact_path),
+        artifacts_rows=_build_artifacts_rows(
+            json_path, html_artifact_path, run_dir=base
+        ),
         conclusion=_h(conclusion),
     )
 
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
-    # Keep a copy under artifacts/html for easier archiving
-    try:
-        import shutil
-
-        shutil.copyfile(out_path, html_artifact_path)
-        logger.info("HTML report copied to %s", html_artifact_path)
-    except Exception as exc:  # pragma: no cover - best-effort copy
-        logger.warning("Failed to copy HTML report to artifacts/html: %s", exc)
     logger.info("HTML report written to %s", out_path)
     return out_path

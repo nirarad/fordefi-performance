@@ -11,7 +11,27 @@ from core.logger import get_logger
 
 logger = get_logger(__name__)
 
-ARTIFACTS_DIR = "artifacts"
+REPORTS_BASE = "reports"
+
+# When set (e.g. by conftest for performance runs), all outputs go under this directory.
+_run_dir: str | None = None
+
+
+def set_run_dir(path: str) -> None:
+    """Set the run directory for this session (one folder per run with all assets)."""
+    global _run_dir
+    _run_dir = path
+
+
+def get_run_dir() -> str:
+    """Return the current run directory. Lazy-creates reports/<timestamp> if not set."""
+    global _run_dir
+    if _run_dir is not None:
+        return _run_dir
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    _run_dir = os.path.join(REPORTS_BASE, ts)
+    os.makedirs(_run_dir, exist_ok=True)
+    return _run_dir
 
 
 def _ts_prefix() -> str:
@@ -24,7 +44,8 @@ def take_screenshot(
     action: str,
 ) -> str:
     """Save a full-page screenshot and return the file path."""
-    out_dir = os.path.join(ARTIFACTS_DIR, "screenshots")
+    base = get_run_dir()
+    out_dir = os.path.join(base, "screenshots")
     os.makedirs(out_dir, exist_ok=True)
     filename = f"{_ts_prefix()}_{page_name}_{action}.png"
     filepath = os.path.join(out_dir, filename)
@@ -41,7 +62,8 @@ def start_tracing(context: BrowserContext, name: str) -> None:
 
 def stop_tracing(context: BrowserContext, page_name: str, action: str) -> str:
     """Stop tracing and save the trace zip. Returns the file path."""
-    out_dir = os.path.join(ARTIFACTS_DIR, "traces")
+    base = get_run_dir()
+    out_dir = os.path.join(base, "traces")
     os.makedirs(out_dir, exist_ok=True)
     filename = f"{_ts_prefix()}_{page_name}_{action}.zip"
     filepath = os.path.join(out_dir, filename)

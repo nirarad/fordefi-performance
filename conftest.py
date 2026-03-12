@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from typing import Generator
 
 import pytest
@@ -17,6 +18,32 @@ BASE_URL = os.getenv("BASE_URL", "https://app.preprod.fordefi.com")
 
 # Key used on pytest config to store collected performance results (list of MeasurementResult).
 PERF_RESULTS_ATTR = "_fordefi_perf_results"
+# Key for timestamped run directory (one folder per run with all assets).
+RUN_DIR_ATTR = "fordefi_run_dir"
+
+REPORTS_BASE = "reports"
+
+
+def _run_dir_timestamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def pytest_sessionstart(session):
+    """Create a timestamped run directory when performance tests are collected."""
+    try:
+        has_perf = any(
+            item.get_closest_marker("performance") for item in session.items
+        )
+    except Exception:
+        has_perf = False
+    if not has_perf:
+        return
+    run_dir = os.path.join(REPORTS_BASE, _run_dir_timestamp())
+    os.makedirs(run_dir, exist_ok=True)
+    setattr(session.config, RUN_DIR_ATTR, run_dir)
+    from core import evidence
+    evidence.set_run_dir(run_dir)
+    logger.info("Performance run directory: %s", run_dir)
 
 
 def pytest_addoption(parser):
@@ -60,15 +87,21 @@ def results_collector(request):
 
 
 @pytest.fixture(scope="session")
-def browser_context_args(browser_context_args):
-    os.makedirs(os.path.join("artifacts", "har"), exist_ok=True)
+def browser_context_args(browser_context_args, request):
+    run_dir = getattr(request.config, RUN_DIR_ATTR, None)
+    if run_dir is None:
+        from core import evidence
+        run_dir = evidence.get_run_dir()
+        setattr(request.config, RUN_DIR_ATTR, run_dir)
+    har_dir = os.path.join(run_dir, "har")
+    os.makedirs(har_dir, exist_ok=True)
+    record_har_path = os.path.join(har_dir, "session.har")
     context_args = {
         **browser_context_args,
         "viewport": {"width": 1280, "height": 720},
         "ignore_https_errors": True,
         "base_url": BASE_URL,
-        # Single HAR file capturing the authenticated session
-        "record_har_path": os.path.join("artifacts", "har", "session.har"),
+        "record_har_path": record_har_path,
     }
     if os.path.exists(AUTH_STATE_PATH):
         context_args["storage_state"] = AUTH_STATE_PATH
@@ -240,16 +273,19 @@ def unauthenticated_page(request: pytest.FixtureRequest) -> Generator[Page, None
 # ---------------------------------------------------------------------------
 
 def pytest_sessionfinish(session, exitstatus):
-    """After all tests: write results JSON/CSV and markdown report (measure) or compare to baseline (benchmark)."""
+    """After all tests: write results JSON/CSV and report into the run directory (reports/<timestamp>/)."""
     results = getattr(session.config, PERF_RESULTS_ATTR, None)
     if results is None or len(results) == 0:
         return
 
+    run_dir = getattr(session.config, RUN_DIR_ATTR, None)
     run_mode = session.config.getoption("--mode", default="measure")
     baseline_path = session.config.getoption("--baseline", default=None)
 
     from core.report_writer import (
+        write_benchmark_diff_csv,
         write_benchmark_diff_json,
+        write_csv,
         write_html_report,
         write_json,
     )
@@ -257,13 +293,17 @@ def pytest_sessionfinish(session, exitstatus):
     json_path = ""
 
     if run_mode == "measure":
-        json_path = write_json(results)
+        json_path = write_json(results, run_dir=run_dir)
+        write_csv(results, run_dir=run_dir)
         write_html_report(
             results,
             comparison=None,
             json_path=json_path,
             run_mode=run_mode,
+            run_dir=run_dir,
         )
+        if run_dir:
+            logger.info("Report and artifacts written to %s", run_dir)
         return
 
     if run_mode == "benchmark" and baseline_path:
@@ -276,14 +316,25 @@ def pytest_sessionfinish(session, exitstatus):
         current_dicts = [r.to_dict() for r in results]
         comparisons = compare_results(baseline, current_dicts)
         diff_data = comparison_to_dict(comparisons)
-        write_benchmark_diff_json(diff_data)
+        write_benchmark_diff_json(diff_data, run_dir=run_dir)
+        write_benchmark_diff_csv(diff_data, run_dir=run_dir)
         write_html_report(
             results,
             comparison=comparisons,
             json_path=json_path,
             run_mode=run_mode,
+            run_dir=run_dir,
         )
+        if run_dir:
+            logger.info("Report and artifacts written to %s", run_dir)
     elif run_mode == "benchmark":
         logger.warning("Benchmark mode set but --baseline not provided; writing measure outputs only.")
-        json_path = write_json(results)
-        write_html_report(results, comparison=None, json_path=json_path, run_mode=run_mode)
+        json_path = write_json(results, run_dir=run_dir)
+        write_csv(results, run_dir=run_dir)
+        write_html_report(
+            results,
+            comparison=None,
+            json_path=json_path,
+            run_mode=run_mode,
+            run_dir=run_dir,
+        )
