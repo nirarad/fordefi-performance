@@ -1,7 +1,9 @@
 # Fordefi Preprod UI Performance Investigation Plan
 
 ## Objective
+
 Build a Python + Playwright performance investigation framework for Fordefi preprod that supports:
+
 - broad scan across prioritized product areas
 - deep dive into selected hotspots
 - evidence collection for report writing
@@ -9,12 +11,14 @@ Build a Python + Playwright performance investigation framework for Fordefi prep
 - benchmark mode against a previous baseline
 - extension via page definitions with manually maintained `data-testid` selectors
 
-This plan is optimized for a 4–5 hour take-home assignment.
+This plan is optimized for a 4-5 hour take-home assignment.
 
 ---
 
 ## Assignment framing
+
 The assignment asks for:
+
 - a testing infrastructure and test suite for UI performance analysis
 - prioritization of findings
 - root-cause investigation for poor-performing flows
@@ -28,6 +32,7 @@ Source: uploaded assignment PDF.
 ## Priorities
 
 ### High priority
+
 - Vaults
 - Assets
 - Accounts
@@ -35,15 +40,18 @@ Source: uploaded assignment PDF.
 - Allowances
 
 ### Medium priority
+
 - Address Book
 - Transaction Policy
 - AML Policy
 
 ### Low priority
+
 - User Management
 - Settings
 
 ### Deep-dive targets
+
 - Vaults
 - Transactions
 - Assets
@@ -52,6 +60,7 @@ Source: uploaded assignment PDF.
 ---
 
 ## Investigation goals
+
 1. Measure user-visible performance of key pages and actions.
 2. Identify the slowest flows and rank them by user impact.
 3. Investigate likely causes using UI timings, network data, console errors, traces, screenshots, and HAR evidence.
@@ -61,6 +70,7 @@ Source: uploaded assignment PDF.
 ---
 
 ## Non-goals
+
 - No synthetic load generation.
 - No backend code instrumentation.
 - No fixing product issues.
@@ -71,62 +81,134 @@ If a required selector does not have a stable `data-testid`, stop and request ma
 ---
 
 ## Recommended toolset
+
 Use these as the primary toolchain.
 
 ### Core execution
-- **Playwright for Python** via `pytest-playwright` for browser automation and test isolation. Playwright recommends the official Playwright Pytest plugin. citeturn547720search12
-- **Pytest parametrization** for DDT-style execution across pages, actions, and datasets. Pytest supports `@pytest.mark.parametrize` for running the same test with multiple inputs. citeturn199733search2turn199733search15
+
+- **Playwright for Python** via `pytest-playwright` for browser automation and test isolation.
+- **Pytest parametrization** for DDT-style execution across pages, actions, and datasets via `@pytest.mark.parametrize`.
+
+### pytest-playwright built-in fixtures and CLI flags (CRITICAL - use, do not reimplement)
+
+`pytest-playwright` provides built-in fixtures: `page`, `context`, `browser`, `browser_name`, `browser_type`, `browser_context_args`. Do **not** override the `page` fixture unless strictly necessary - the default fixture already handles page lifecycle correctly.
+
+Leverage these built-in CLI flags instead of writing custom options:
+
+- `--browser chromium|firefox|webkit` - select browser
+- `--headed` - visible browser (debugging only, never for measurement)
+- `--base-url` - base URL for `page.goto("/relative")`
+- `--tracing on|off|retain-on-failure` - Playwright traces
+- `--screenshot on|off|only-on-failure` - screenshots
+- `--video on|off|retain-on-failure` - record video
+- `--output` - artifact output directory (default: `test-results/`)
+
+Customize via `browser_context_args` fixture in conftest.py:
+
+```python
+@pytest.fixture(scope="session")
+def browser_context_args(browser_context_args):
+    return {
+        **browser_context_args,
+        "viewport": {"width": 1280, "height": 720},
+        "ignore_https_errors": True,
+        "record_har_path": "artifacts/har/trace.har",
+    }
+```
+
+### Timeout configuration for performance measurement (CRITICAL)
+
+Default Playwright timeouts auto-retry and mask actual slowness. For performance measurement:
+
+- Use `page.wait_for_selector(selector, timeout=...)` with explicit timeouts as the measurement boundary
+- Do **not** use auto-retrying `expect()` assertions as timing endpoints - they hide actual wait duration behind retry loops
+- For navigation timing, use `page.goto(url, wait_until="networkidle")` or `"load"` depending on the target metric
+- Set `page.set_default_timeout(30_000)` to prevent infinite hangs while keeping it large enough to capture real load durations
+
+### Headless-by-default for measurement consistency
+
+Performance measurements must run headless (Playwright default) for repeatable results. Headed mode introduces GPU compositing and window manager overhead. Reserve `--headed` for debugging only.
 
 ### Evidence and debugging
-- **Playwright tracing** to capture interaction traces and open them in Trace Viewer. citeturn547720search0turn547720search4
-- **Playwright network monitoring / HAR support** to inspect network traffic and preserve request evidence. Playwright supports network tracking and HAR recording/replay flows. citeturn547720search13turn547720search9turn547720search5
+
+- **Playwright tracing** to capture interaction traces and open them in Trace Viewer. Use the built-in `--tracing retain-on-failure` flag.
+- **Playwright network monitoring / HAR support** to inspect network traffic and preserve request evidence. Enable via `record_har_path` in `browser_context_args`.
 - **Console error collection** through Playwright page event listeners.
-- **Screenshots** for visual evidence.
+- **Screenshots** for visual evidence. Use `--screenshot only-on-failure` for CI, explicit `page.screenshot()` for evidence collection.
 
 ### Benchmarking / audit augmentation
-- **Lighthouse** for standardized page-level web performance auditing and regression-oriented comparison on selected pages. Lighthouse audits a URL and generates a performance report; Lighthouse CI is intended to prevent regressions. Use this only as a supplement to the Playwright investigation, not as the main framework. citeturn547720search2turn547720search10
+
+- **Lighthouse** for standardized page-level web performance auditing on selected pages. Note: Lighthouse requires Node.js and the `lighthouse` npm package - it is not a Python-native tool. Use only as a supplement, not the main framework. If Node.js is not available in the test environment, skip Lighthouse entirely and rely on the browser Performance API metrics captured via Playwright.
 
 ### Human-readable reporting
+
 Choose one:
-- **Allure Report** for rich interactive reporting, attachments, history, and trend analysis. Allure supports pytest integration, attachments, history, timeline, and visual analytics. citeturn547720search3turn547720search11turn547720search15
-- **pytest-html** for a lighter HTML report if time is tight. It supports HTML reports and extra embedded content such as JSON, text, URLs, and images. citeturn199733search1turn199733search3
+
+- **Allure Report** for rich interactive reporting, attachments, history, and trend analysis.
+- **pytest-html** for a lighter HTML report if time is tight.
 
 ### Decision for this assignment
+
 Implement:
+
 - Playwright + pytest as the execution framework
 - JSON/CSV results for machine-readable benchmark comparison
 - markdown report for final submission
 - optional pytest-html for quick local HTML output
 - optional Allure only if setup time remains
-- optional Lighthouse on 1–2 candidate pages only
+- optional Lighthouse on 1-2 candidate pages only
 
 Do **not** over-engineer report tooling at the expense of framework clarity.
 
 ---
 
 ## Architecture approach
-Use an **interface-style model** for page behavior, backed by `ABC` and `dataclass` configuration.
+
+Use a **capability-based model** for page behavior, backed by `Protocol` classes (structural subtyping) and `dataclass` configuration.
 
 ### Design principles
+
 - pages declare **capabilities**, not custom procedural logic everywhere
 - behavior modules execute generic actions against any page implementing the required interface
 - selectors come from a single source of truth
 - prefer `data-testid`; do not invent brittle selectors
 - metrics, evidence, and benchmark outputs are standardized
 
-### Core interfaces
-Create abstract interfaces such as:
-- `BasePage`
-- `TablePage`
-- `SearchablePage`
-- `SortablePage`
-- `FilterablePage`
-- `PaginatedPage`
-- `SidebarPage`
-- `ConsoleObservablePage`
+### Core interfaces (use `Protocol`)
+
+Prefer `typing.Protocol` for page interfaces. Protocol enables structural subtyping (duck typing with type safety) which is more Pythonic and avoids forced inheritance hierarchies. Pages only need to implement the right methods/attributes - they don't need to inherit from a base class.
+
+Define Protocol classes such as:
+
+- `HasTable` - pages with table content (table_selector_testid, row_selector_testid)
+- `Searchable` - pages with search (search_input_testid)
+- `Sortable` - pages with sortable columns (sort_target_testid)
+- `Filterable` - pages with filters (filter_trigger_testid)
+- `Paginated` - pages with pagination
+- `HasSidebar` - pages with detail sidebar
+
+Example:
+
+```python
+from typing import Protocol
+
+class HasTable(Protocol):
+    table_selector_testid: str
+    row_selector_testid: str
+
+class Searchable(Protocol):
+    search_input_testid: str
+
+def measure_search(page: Page, spec: Searchable, term: str) -> float:
+    ...
+```
+
+Fall back to `ABC` only if runtime enforcement of missing methods is needed during development.
 
 ### Page definition style
+
 Use a dataclass-backed page spec with fields like:
+
 - `name`
 - `path`
 - `priority`
@@ -163,17 +245,19 @@ fordefi-perf/
   README.md
   requirements.txt
   pytest.ini
+  pyrightconfig.json
   .env.example
   conftest.py
 
   configs/
+    __init__.py
     pages.py
     scenarios.py
     thresholds.py
 
   core/
-    base_page.py
-    capabilities.py
+    __init__.py
+    protocols.py
     metrics.py
     benchmark.py
     console_capture.py
@@ -183,6 +267,7 @@ fordefi-perf/
     report_writer.py
 
   pages/
+    __init__.py
     vaults_page.py
     assets_page.py
     accounts_page.py
@@ -195,11 +280,13 @@ fordefi-perf/
     settings_page.py
 
   tests/
+    __init__.py
     test_broad_scan.py
     test_deep_dive.py
     test_benchmark.py
 
   data/
+    __init__.py
     datasets.py
 
   artifacts/
@@ -214,17 +301,51 @@ fordefi-perf/
     performance_investigation_report.md
 ```
 
+Note: every Python package directory must include an `__init__.py` file.
+
 ---
 
 ## Run modes
 
+### Custom CLI option registration (CRITICAL)
+
+Custom options like `--mode` and `--baseline` must be registered via `pytest_addoption` in conftest.py. Without this, pytest will reject unknown flags.
+
+```python
+def pytest_addoption(parser):
+    parser.addoption(
+        "--mode",
+        action="store",
+        default="measure",
+        choices=["measure", "benchmark"],
+        help="Run mode: measure (collect data) or benchmark (compare to baseline)",
+    )
+    parser.addoption(
+        "--baseline",
+        action="store",
+        default=None,
+        help="Path to baseline results JSON for benchmark mode",
+    )
+
+@pytest.fixture(scope="session")
+def run_mode(request):
+    return request.config.getoption("--mode")
+
+@pytest.fixture(scope="session")
+def baseline_path(request):
+    return request.config.getoption("--baseline")
+```
+
 ### 1. Measure mode
+
 Purpose:
+
 - execute flows
 - capture metrics and evidence
 - generate a fresh baseline
 
 Outputs:
+
 - `results.json`
 - `results.csv`
 - screenshots
@@ -234,34 +355,43 @@ Outputs:
 - optional HTML report
 
 CLI shape:
+
 ```bash
-pytest -m measure --mode=measure
+pytest -m performance --mode=measure
 ```
 
 ### 2. Benchmark mode
+
 Purpose:
+
 - compare current results against previous baseline
 - identify regressions and improvements
 
 Inputs:
+
 - previous `results.json`
 
 Outputs:
+
 - benchmark diff JSON/CSV
 - regression summary markdown
 
 CLI shape:
+
 ```bash
 pytest -m benchmark --mode=benchmark --baseline=artifacts/json/baseline.json
 ```
 
 ### Benchmark logic
+
 For each comparable metric:
+
 - absolute delta
 - percentage delta
 - status: improved / unchanged / regressed
 
 Suggested default regression threshold:
+
 - warning: >10%
 - critical: >20%
 
@@ -269,9 +399,41 @@ Suggested default regression threshold:
 
 ## Metrics to capture
 
-### Page-level metrics
-- navigation start timestamp
-- page-ready timestamp
+### Browser-native Performance API metrics (CRITICAL)
+
+Use the browser's built-in Performance API as the primary source of navigation timing, not only Python-side stopwatch measurements. Playwright can access these via `page.evaluate()`.
+
+Capture from `PerformanceNavigationTiming`:
+
+- `domContentLoadedEventEnd` - DOM ready
+- `loadEventEnd` - full page load
+- `responseEnd - requestStart` - server response time (TTFB)
+- `domInteractive` - time to interactive DOM
+
+Capture Core Web Vitals via PerformanceObserver injection:
+
+- **LCP** (Largest Contentful Paint) - primary load metric
+- **CLS** (Cumulative Layout Shift) - visual stability
+- **INP** (Interaction to Next Paint) - responsiveness to user input
+
+Example capture pattern:
+
+```python
+nav_timing = page.evaluate("""() => {
+    const entry = performance.getEntriesByType('navigation')[0]
+    return {
+        ttfb: entry.responseStart - entry.requestStart,
+        dom_content_loaded: entry.domContentLoadedEventEnd,
+        load_event_end: entry.loadEventEnd,
+        dom_interactive: entry.domInteractive,
+    }
+}""")
+```
+
+### Custom page-level metrics
+
+- navigation start timestamp (Python-side `time.perf_counter()`)
+- page-ready timestamp (custom `data-testid` selector visible)
 - table-ready timestamp
 - spinner duration
 - progress-bar duration
@@ -280,13 +442,40 @@ Suggested default regression threshold:
 - console error count
 
 ### Interaction-level metrics
-- sort start → sort complete
-- filter start → filter complete
-- search start → search complete
-- pagination click → page stable
-- sidebar open start → sidebar visible
+
+- sort start -> sort complete
+- filter start -> filter complete
+- search start -> search complete
+- pagination click -> page stable
+- sidebar open start -> sidebar visible
+
+### Statistical rigor (CRITICAL)
+
+Raw single-sample measurements are not credible for performance reporting. Apply the following:
+
+- **Minimum iterations**: run each flow at least 5 times for broad scan, 10+ for deep dives
+- **Warm-up run**: discard the first iteration to avoid cold-start skew (browser cache, JIT, DNS)
+- **Aggregation**: report median, P95, P99, min, max, and standard deviation
+- **Outlier detection**: flag runs where timing deviates >2x standard deviation from the median
+- Use `statistics.median`, `statistics.stdev` from the Python standard library
+
+Example aggregation structure:
+
+```python
+@dataclass
+class AggregatedMetric:
+    name: str
+    samples: list[float]
+    median: float
+    p95: float
+    p99: float
+    std_dev: float
+    min: float
+    max: float
+```
 
 ### Evidence fields
+
 - page name
 - action name
 - dataset / parameter set
@@ -300,20 +489,24 @@ Suggested default regression threshold:
 ---
 
 ## Console error handling
+
 This is required.
 
 Capture all browser console messages during each flow, then classify them into:
+
 - `error`
 - `warning`
 - `info`
 
 Store at minimum:
+
 - message type
 - text
 - page URL
 - timestamp
 
 Report:
+
 - total console errors by page
 - repeated error signatures
 - whether errors correlate with slow flows
@@ -325,9 +518,11 @@ A high volume of console errors should be explicitly called out in the final rep
 ## Test strategy
 
 ### Broad scan
+
 Cover all scoped pages with lightweight measurement.
 
-For each page, execute only actions supported by that page’s declared interface/capabilities:
+For each page, execute only actions supported by that page's declared interface/capabilities:
+
 1. open page
 2. wait for ready state
 3. measure initial load
@@ -339,25 +534,31 @@ For each page, execute only actions supported by that page’s declared interfac
 9. save screenshot and metrics
 
 Output:
+
 - ranked hotspot inventory
 - candidate pages for deep dive
 
 ### Deep dive
+
 Run on:
+
 - Vaults
 - Transactions
 - Assets
 - Transaction Policy
 
 For each deep-dive page:
-- repeat the key flows multiple times
+
+- repeat the key flows multiple times (minimum 10 iterations, discard first warm-up run)
 - preserve trace and screenshots
 - preserve network evidence where relevant
-- compare timings across runs
+- compare timings across runs with statistical aggregation (median, P95, std dev)
 - correlate visible slowness with console/network signals
 
 ### DDT / parametrized execution
+
 Use `pytest.mark.parametrize` to drive:
+
 - page under test
 - action type
 - search term set
@@ -366,6 +567,7 @@ Use `pytest.mark.parametrize` to drive:
 - run mode
 
 Example dimensions:
+
 - pages: vaults, assets, accounts, transactions, allowances, address_book, transaction_policy, aml_policy
 - actions: load, search, sort, filter
 - datasets: name-based search, address-based search, empty-result search, common filter, common sort
@@ -379,6 +581,7 @@ Keep DDT data small and intentional.
 ### High priority pages
 
 #### Vaults
+
 - load page
 - wait for table
 - search by name/address
@@ -386,6 +589,7 @@ Keep DDT data small and intentional.
 - apply filter if available
 
 #### Assets
+
 - load page
 - wait for assets table
 - search
@@ -393,6 +597,7 @@ Keep DDT data small and intentional.
 - filter
 
 #### Accounts
+
 - load page
 - wait for accounts table
 - search
@@ -400,6 +605,7 @@ Keep DDT data small and intentional.
 - filter
 
 #### Transactions
+
 - load page
 - wait for transactions table
 - search by name/address if supported
@@ -408,6 +614,7 @@ Keep DDT data small and intentional.
 - optional sidebar open if stable selector exists
 
 #### Allowances
+
 - load page
 - wait for list
 - search / sort / filter where supported
@@ -415,6 +622,7 @@ Keep DDT data small and intentional.
 ### Medium priority pages
 
 #### Address Book
+
 - load page
 - wait for table
 - search by name/address
@@ -422,6 +630,7 @@ Keep DDT data small and intentional.
 - filter if present
 
 #### Transaction Policy
+
 - load page
 - measure top progress bar duration
 - measure list/table ready state
@@ -430,19 +639,23 @@ Keep DDT data small and intentional.
 - explicitly note lack of pagination
 
 #### AML Policy
+
 - load page
 - wait for rules list
 - search/sort/filter where supported
 
 ### Low priority pages
+
 Smoke-only pass unless very fast to implement.
 
 ---
 
 ## Root-cause investigation heuristics
+
 Use these heuristics in the report, but mark them as hypotheses unless directly evidenced.
 
 ### Likely bottleneck classes
+
 - missing pagination / large unbounded list
 - expensive server-side sort/filter/search
 - repeated or redundant API calls
@@ -451,6 +664,7 @@ Use these heuristics in the report, but mark them as hypotheses unless directly 
 - slow page transition with weak loading-state UX
 
 ### Correlation rules
+
 - slow action + slow network timing => likely API/backend bottleneck
 - slow action + fast network + delayed render => likely frontend rendering bottleneck
 - repeated requests after single action => possible duplicate fetch / state churn
@@ -459,7 +673,9 @@ Use these heuristics in the report, but mark them as hypotheses unless directly 
 ---
 
 ## Output artifacts
+
 Generate these artifacts for each run:
+
 - `artifacts/json/results.json`
 - `artifacts/csv/results.csv`
 - `artifacts/json/console_errors.json`
@@ -489,7 +705,9 @@ Generate these artifacts for each run:
 ```
 
 ### Report requirements mapping
+
 Ensure the report explicitly covers:
+
 - methodology
 - scope / coverage
 - issue descriptions
@@ -504,7 +722,8 @@ This aligns directly with the assignment deliverable requirements.
 ---
 
 ## Extensibility rules
-1. Every new page must be added through a page spec + interface implementation.
+
+1. Every new page must be added through a page spec + Protocol implementation.
 2. Use `data-testid` selectors where possible.
 3. Do not create brittle CSS/XPath fallbacks silently.
 4. If a stable selector does not exist, stop and request manual guidance.
@@ -514,40 +733,48 @@ This aligns directly with the assignment deliverable requirements.
 ---
 
 ## Implementation order
+
 This is the execution order Cursor should follow.
 
-### Phase 1 — Bootstrap
-1. Create repository skeleton.
+### Phase 1 - Bootstrap
+
+1. Create repository skeleton (including `__init__.py` in all package directories).
 2. Add dependencies.
-3. Configure Playwright + pytest.
+3. Configure Playwright + pytest (register custom CLI options via `pytest_addoption`).
 4. Add `.env.example` for credentials/base URL.
 5. Add artifact output folders.
+6. Do **not** override the built-in `page` fixture from pytest-playwright.
 
-### Phase 2 — Core framework
-6. Implement base interfaces with `ABC`.
-7. Implement dataclass page spec model.
-8. Implement generic timing utilities.
-9. Implement console capture.
-10. Implement evidence capture.
-11. Implement JSON/CSV result writer.
-12. Implement benchmark comparator.
+### Phase 2 - Core framework
 
-### Phase 3 — Page definitions
-13. Add page specs for all scoped pages.
-14. Populate only selectors with stable `data-testid` values.
-15. If a required selector is missing, stop and request user input.
+1. Implement Protocol-based capability interfaces (in `core/protocols.py`).
+2. Implement dataclass page spec model.
+3. Implement generic timing utilities (both `time.perf_counter()` and browser Performance API capture).
+4. Implement console capture.
+5. Implement evidence capture.
+6. Implement JSON/CSV result writer (use Python `json` and `csv` stdlib - no pandas needed).
+7. Implement benchmark comparator.
+8. Implement statistical aggregation (median, P95, P99, std dev).
 
-### Phase 4 — Test flows
-16. Implement broad scan test.
-17. Implement deep-dive test.
-18. Implement DDT parameter sets.
-19. Implement benchmark test.
+### Phase 3 - Page definitions
 
-### Phase 5 — Reporting
-20. Generate markdown report from result artifacts.
-21. Summarize hotspots and deep-dive findings.
-22. Include console error analysis.
-23. Include benchmark design and extension instructions.
+1. Add page specs for all scoped pages.
+2. Populate only selectors with stable `data-testid` values.
+3. If a required selector is missing, stop and request user input.
+
+### Phase 4 - Test flows
+
+1. Implement broad scan test.
+2. Implement deep-dive test (with iteration loops and warm-up).
+3. Implement DDT parameter sets.
+4. Implement benchmark test.
+
+### Phase 5 - Reporting
+
+1. Generate markdown report from result artifacts.
+2. Summarize hotspots and deep-dive findings.
+3. Include console error analysis.
+4. Include benchmark design and extension instructions.
 
 ---
 
@@ -558,12 +785,17 @@ playwright
 pytest
 pytest-playwright
 pytest-html
-pydantic or dataclasses-only approach
-pandas
 python-dotenv
 ```
 
+Notes:
+
+- Use Python `dataclasses` from stdlib. Avoid `pydantic` unless validation complexity warrants it.
+- Use Python `json`, `csv`, `statistics` from stdlib. Do **not** add `pandas` - it is unnecessary overhead for this scope.
+- Use `pytest-base-url` only if `--base-url` flag is not already provided by `pytest-playwright`.
+
 Optional:
+
 ```text
 allure-pytest
 ```
@@ -573,25 +805,33 @@ Avoid unnecessary stack expansion.
 ---
 
 ## Coding constraints for Cursor
+
 - Use Python only.
 - Keep implementation pragmatic, not enterprise-heavy.
-- Prefer small modules and explicit types.
+- Prefer `Protocol` over `ABC` for interfaces. Fall back to `ABC` only when runtime enforcement is needed.
+- Prefer small modules and explicit type hints.
 - Avoid speculative abstractions.
 - No selector guessing when `data-testid` is missing.
 - Preserve artifacts deterministically with timestamped file names.
 - Write code and report output suitable for take-home submission, not production deployment.
+- Do **not** override pytest-playwright's built-in `page` fixture unless there is a specific, documented reason.
+- Always measure in headless mode for consistency. Use `--headed` for debugging only.
 
 ---
 
 ## Done criteria
+
 The task is complete when all of the following exist:
-1. Reusable Python + Playwright framework with interface-style page model.
+
+1. Reusable Python + Playwright framework with Protocol-based page model.
 2. Broad scan covering scoped pages.
 3. Deep-dive coverage for vaults, transactions, assets, transaction policy.
 4. DDT-based execution.
-5. Measure mode and benchmark mode.
+5. Measure mode and benchmark mode (with `pytest_addoption` registration).
 6. Console error capture integrated into results.
-7. JSON/CSV artifacts.
-8. Markdown investigation report.
-9. Clear extension instructions for adding new pages and test cases.
+7. Browser Performance API metrics (navigation timing, Core Web Vitals) captured alongside custom timings.
+8. Statistical aggregation of multi-iteration measurements (median, P95, std dev).
+9. JSON/CSV artifacts.
+10. Markdown investigation report.
+11. Clear extension instructions for adding new pages and test cases.
 
