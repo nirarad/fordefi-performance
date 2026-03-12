@@ -76,6 +76,7 @@ class MeasurementResult:
     lcp: AggregatedMetric = field(default_factory=lambda: AggregatedMetric("lcp"))
     cls: AggregatedMetric = field(default_factory=lambda: AggregatedMetric("cls"))
     console_error_count: int = 0
+    console_example_error: str = ""
     screenshot_path: str = ""
     trace_path: str = ""
     har_path: str = ""
@@ -96,6 +97,7 @@ class MeasurementResult:
         for sm, om in zip(self_metrics, other_metrics):
             sm.samples.extend(om.samples)
         self.console_error_count = max(self.console_error_count, other.console_error_count)
+        self.console_example_error = self.console_example_error or other.console_example_error
         self.screenshot_path = other.screenshot_path or self.screenshot_path
         self.trace_path = other.trace_path or self.trace_path
         self.har_path = other.har_path or self.har_path
@@ -138,6 +140,8 @@ class MeasurementResult:
         result.cls.samples.append(vitals.cls)
         if console is not None:
             result.console_error_count = console.error_count
+            if console.errors:
+                result.console_example_error = (console.errors[0].text or "")[:500]
         if network_capture is not None:
             result.network_calls = network_capture.to_list()
             result.network_summary = network_capture.get_summary()
@@ -172,6 +176,7 @@ class MeasurementResult:
             "timestamp": self.timestamp,
             "metrics": {m.name: m.to_dict() for m in self._all_metrics()},
             "console_error_count": self.console_error_count,
+            "console_example_error": self.console_example_error,
             "screenshot_path": self.screenshot_path,
             "trace_path": self.trace_path,
             "har_path": self.har_path,

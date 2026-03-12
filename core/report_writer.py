@@ -619,6 +619,15 @@ def _get_console_errors(results_for_page: list[MeasurementResult]) -> int:
     return max(r.console_error_count for r in results_for_page)
 
 
+def _get_console_example_error(results_for_page: list[MeasurementResult]) -> str:
+    """First non-empty console_example_error for page (truncated for display), or —."""
+    for r in results_for_page:
+        if r.console_example_error:
+            s = r.console_example_error.strip()
+            return s[:300] + "…" if len(s) > 300 else s
+    return "—"
+
+
 def _get_table_render_time(results_for_page: list[MeasurementResult]) -> str:
     """Table render = table_render wall_clock, if measured."""
     for r in results_for_page:
@@ -631,6 +640,22 @@ def _get_pagination_time(results_for_page: list[MeasurementResult]) -> str:
     """Pagination render = pagination_next wall_clock, if measured."""
     for r in results_for_page:
         if r.action == "pagination_next":
+            return f"{r.wall_clock.median:.0f} ms"
+    return "—"
+
+
+def _get_search_time(results_for_page: list[MeasurementResult]) -> str:
+    """Search table load = search wall_clock, if measured."""
+    for r in results_for_page:
+        if r.action == "search":
+            return f"{r.wall_clock.median:.0f} ms"
+    return "—"
+
+
+def _get_sort_time(results_for_page: list[MeasurementResult]) -> str:
+    """Sort table load = sort wall_clock, if measured."""
+    for r in results_for_page:
+        if r.action == "sort":
             return f"{r.wall_clock.median:.0f} ms"
     return "—"
 
@@ -663,8 +688,12 @@ def _build_deep_dive_sections(by_page: dict[str, list[MeasurementResult]]) -> st
         load_val = _get_load_time(page_rows) if page_rows else "—"
         table_val = _get_table_render_time(page_rows) if page_rows else "—"
         pagination_val = _get_pagination_time(page_rows) if page_rows else "—"
+        sort_val = _get_sort_time(page_rows) if page_rows else "—"
+        search_val = _get_search_time(page_rows) if page_rows else "—"
         table_class = "" if table_val != "—" else "na"
         pagination_class = "" if pagination_val != "—" else "na"
+        sort_class = "" if sort_val != "—" else "na"
+        search_class = "" if search_val != "—" else "na"
         err_count = _get_console_errors(page_rows) if page_rows else 0
         parts.append(f"<h3>{_h(page)}</h3>")
         if page == "Transaction Policy":
@@ -679,9 +708,9 @@ def _build_deep_dive_sections(by_page: dict[str, list[MeasurementResult]]) -> st
                 f"<tr><td>Page Load</td><td>{_h(load_val)}</td></tr>"
                 f"<tr><td>Table Render</td><td class=\"{table_class}\">{_h(table_val)}</td></tr>"
                 f"<tr><td>Pagination (next-page)</td><td class=\"{pagination_class}\">{_h(pagination_val)}</td></tr>"
-                "<tr><td>Sort</td><td class=\"na\">—</td></tr>"
+                f"<tr><td>Sort</td><td class=\"{sort_class}\">{_h(sort_val)}</td></tr>"
                 "<tr><td>Filter</td><td class=\"na\">—</td></tr>"
-                "<tr><td>Search</td><td class=\"na\">—</td></tr>"
+                f"<tr><td>Search</td><td class=\"{search_class}\">{_h(search_val)}</td></tr>"
                 f"<tr><td>Console Errors</td><td>{err_count}</td></tr>"
             )
         parts.append(
@@ -716,7 +745,7 @@ def _build_benchmark_section(comparison: list[RowComparison] | None) -> str:
 
 def _build_console_errors_rows(by_page: dict[str, list[MeasurementResult]]) -> str:
     return "\n".join(
-        f"<tr><td>{_h(page)}</td><td>{_get_console_errors(by_page.get(page, []))}</td><td class=\"na\">—</td></tr>"
+        f"<tr><td>{_h(page)}</td><td>{_get_console_errors(by_page.get(page, []))}</td><td>{_h(_get_console_example_error(by_page.get(page, [])))}</td></tr>"
         for page in PERFORMANCE_SUMMARY_PAGES
     )
 
