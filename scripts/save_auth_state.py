@@ -4,7 +4,7 @@ One-time login helper to save authenticated browser state.
 Usage:
     python scripts/save_auth_state.py
 
-Reads USERNAME and PASSWORD from .env, logs into Fordefi preprod,
+Reads FORDEFI_USERNAME and FORDEFI_PASSWORD from .env, logs into Fordefi preprod,
 and saves the session to auth/storage_state.json for test reuse.
 """
 
@@ -27,11 +27,11 @@ logger = logging.getLogger(__name__)
 
 def main():
     base_url = os.getenv("BASE_URL", "https://app.preprod.fordefi.com")
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
+    username = os.getenv("FORDEFI_USERNAME")
+    password = os.getenv("FORDEFI_PASSWORD")
 
     if not username or not password:
-        logger.error("USERNAME and PASSWORD must be set in .env")
+        logger.error("FORDEFI_USERNAME and FORDEFI_PASSWORD must be set in .env")
         sys.exit(1)
 
     os.makedirs("auth", exist_ok=True)

@@ -288,6 +288,37 @@ Use a **capability-based model** for page behavior, backed by `Protocol` classes
 - prefer `data-testid`; do not invent brittle selectors
 - metrics, evidence, and benchmark outputs are standardized
 
+### Page object conventions
+
+Each page object module follows this structure:
+
+1. **Selectors dataclass** — a frozen `@dataclass` at the top of the module holding all CSS/testid selector strings. Keeps selectors scannable and separated from logic.
+2. **Page class** — references `selectors` as a class attribute. Locators that use `get_by_role` or other Playwright helpers (not raw CSS strings) are exposed as `@property` methods.
+3. **Locator creation** — locators are created fresh on access (not cached in `__init__`). Playwright locators auto-wait and should resolve against the current DOM state.
+4. **`@property` for element access** — use `@property` for locators that return a `Locator` object. This reads naturally: `self._continue_button.click()` instead of `self._continue_button().click()`.
+
+Example:
+```python
+@dataclass(frozen=True)
+class VaultsSelectors:
+    table: str = "[data-testid='vaults-table']"
+    search_input: str = "[data-testid='search-input']"
+
+class VaultsPage:
+    selectors = VaultsSelectors()
+
+    def __init__(self, page: Page) -> None:
+        self.page = page
+
+    @property
+    def _table(self) -> Locator:
+        return self.page.locator(self.selectors.table)
+
+    @property
+    def _sort_by_name(self) -> Locator:
+        return self.page.get_by_role("button", name="Name")
+```
+
 ### Core interfaces (use `Protocol`)
 
 Prefer `typing.Protocol` for page interfaces. Protocol enables structural subtyping (duck typing with type safety) which is more Pythonic and avoids forced inheritance hierarchies. Pages only need to implement the right methods/attributes - they don't need to inherit from a base class.

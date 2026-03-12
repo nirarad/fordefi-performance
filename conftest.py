@@ -61,11 +61,11 @@ def ensure_authenticated(browser: Browser) -> None:
         logger.info("Using saved auth state: %s", AUTH_STATE_PATH)
         return
 
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
+    username = os.getenv("FORDEFI_USERNAME")
+    password = os.getenv("FORDEFI_PASSWORD")
     if not username or not password:
         pytest.fail(
-            "No auth state found and USERNAME/PASSWORD not set in .env. "
+            "No auth state found and FORDEFI_USERNAME/FORDEFI_PASSWORD not set in .env. "
             "Run 'python scripts/save_auth_state.py' or set credentials."
         )
 
