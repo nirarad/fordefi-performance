@@ -17,6 +17,7 @@ from core.console_capture import ConsoleCapture
 from core.evidence import take_screenshot
 from core.logger import get_logger
 from core.metrics import MeasurementResult
+from core.network_capture import NetworkCapture
 from core.timing import capture_navigation_timing, capture_web_vitals, measure_action
 from data.scenario_loader import NavTabScenario, load_nav_tab_scenarios
 from pages.nav_bar_page import NavBarPage
@@ -36,7 +37,11 @@ nav_tab_scenarios = load_nav_tab_scenarios()
     nav_tab_scenarios,
     ids=[s.test_id for s in nav_tab_scenarios],
 )
-def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
+def test_nav_tab_load(
+    page: Page,
+    scenario: NavTabScenario,
+    results_collector: list,
+) -> None:
     """Navigate to a tab via the sidebar nav bar and measure load performance.
 
     Steps:
@@ -63,6 +68,8 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
 
     # -- Phase 1: initial tab load -------------------------------------------
 
+    network = NetworkCapture()
+    network.start(page)
     with measure_action(f"{tab_name} nav-tab load") as wall_clock:
         nav_page.navigate_to(tab_name)
 
@@ -74,6 +81,7 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
         if rows_ms is not None:
             logger.info("%s table rows visible in %.0f ms", tab_name, rows_ms)
 
+    network.stop()
     nav = capture_navigation_timing(page)
     vitals = capture_web_vitals(page)
     screenshot_path = take_screenshot(page, tab_slug, "nav_tab_load")
@@ -85,8 +93,10 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
         nav,
         vitals,
         console=console,
+        network_capture=network,
         screenshot_path=screenshot_path,
     )
+    results_collector.append(load_result)
 
     logger.info(
         "%s nav-tab load — wall: %.0f ms | TTFB: %.0f ms | LCP: %.0f ms | errors: %d",

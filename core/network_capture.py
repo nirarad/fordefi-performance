@@ -51,9 +51,21 @@ class NetworkCapture:
     def entries(self) -> list[NetworkEntry]:
         return list(self._entries)
 
-    @property
-    def slow_requests(self, threshold_ms: float = 1_000) -> list[NetworkEntry]:
+    def get_slow_requests(self, threshold_ms: float = 1_000) -> list[NetworkEntry]:
+        """Return entries with duration above threshold_ms."""
         return [e for e in self._entries if e.duration_ms > threshold_ms]
+
+    def get_summary(self, slow_threshold_ms: float = 1_000) -> dict:
+        """Return summary stats for reporting: count, total_ms, slow_count, failed_count."""
+        total_ms = sum(e.duration_ms for e in self._entries)
+        slow_count = sum(1 for e in self._entries if e.duration_ms > slow_threshold_ms)
+        failed_count = sum(1 for e in self._entries if e.status >= 400)
+        return {
+            "request_count": len(self._entries),
+            "total_duration_ms": round(total_ms, 2),
+            "slow_count": slow_count,
+            "failed_count": failed_count,
+        }
 
     def to_list(self) -> list[dict]:
         return [

@@ -12,6 +12,7 @@ from core.console_capture import ConsoleCapture
 from core.evidence import take_screenshot
 from core.logger import get_logger
 from core.metrics import MeasurementResult
+from core.network_capture import NetworkCapture
 from core.timing import capture_navigation_timing, capture_web_vitals, measure_action
 from data.scenario_loader import SingleItemLoadScenario, load_single_item_load_scenarios
 from pages.nav_bar_page import NavBarPage
@@ -32,7 +33,11 @@ single_item_scenarios = load_single_item_load_scenarios()
     single_item_scenarios,
     ids=[s.test_id for s in single_item_scenarios],
 )
-def test_single_item_load(page: Page, scenario: SingleItemLoadScenario) -> None:
+def test_single_item_load(
+    page: Page,
+    scenario: SingleItemLoadScenario,
+    results_collector: list,
+) -> None:
     """Open list tab, click first table row, measure time until single-item page loads.
 
     Steps:
@@ -59,10 +64,13 @@ def test_single_item_load(page: Page, scenario: SingleItemLoadScenario) -> None:
 
     tab_slug = tab_name.lower().replace(" ", "_")
 
+    network = NetworkCapture()
+    network.start(page)
     with measure_action(f"{tab_name} single-item load") as wall_clock:
         table_page.click_first_table_row()
         vault_page.wait_until_ready()
 
+    network.stop()
     nav = capture_navigation_timing(page)
     vitals = capture_web_vitals(page)
     screenshot_path = take_screenshot(page, tab_slug, "single_item_load")
@@ -74,8 +82,10 @@ def test_single_item_load(page: Page, scenario: SingleItemLoadScenario) -> None:
         nav,
         vitals,
         console=console,
+        network_capture=network,
         screenshot_path=screenshot_path,
     )
+    results_collector.append(load_result)
 
     logger.info(
         "%s single-item load — wall: %.0f ms | TTFB: %.0f ms | LCP: %.0f ms | errors: %d",

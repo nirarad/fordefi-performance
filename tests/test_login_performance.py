@@ -19,6 +19,7 @@ from core.console_capture import ConsoleCapture
 from core.evidence import take_screenshot
 from core.logger import get_logger
 from core.metrics import MeasurementResult
+from core.network_capture import NetworkCapture
 from core.timing import capture_navigation_timing, capture_web_vitals, measure_action
 from pages.login_page import LoginPage
 
@@ -39,7 +40,10 @@ def _require_credentials() -> tuple[str, str]:
 
 
 @pytest.mark.performance
-def test_login_page_load(unauthenticated_page: Page) -> None:
+def test_login_page_load(
+    unauthenticated_page: Page,
+    results_collector: list,
+) -> None:
     """Measure time to load and render the Auth0 login page.
 
     Clock starts at navigation and stops when the email input is visible.
@@ -49,11 +53,14 @@ def test_login_page_load(unauthenticated_page: Page) -> None:
 
     console = ConsoleCapture()
     console.start(page)
+    network = NetworkCapture()
+    network.start(page)
 
     with measure_action("Login page load") as wall_clock:
         page.goto(BASE_URL, wait_until="commit")
         form_ready_ms = login_page.wait_for_login_form()
 
+    network.stop()
     nav = capture_navigation_timing(page)
     vitals = capture_web_vitals(page)
     screenshot_path = take_screenshot(page, "login", "page_load")
@@ -66,8 +73,10 @@ def test_login_page_load(unauthenticated_page: Page) -> None:
         nav,
         vitals,
         console=console,
+        network_capture=network,
         screenshot_path=screenshot_path,
     )
+    results_collector.append(result)
 
     logger.info(
         "Login page load — wall: %.0f ms | form ready: %.0f ms | TTFB: %.0f ms | errors: %d",
@@ -79,7 +88,10 @@ def test_login_page_load(unauthenticated_page: Page) -> None:
 
 
 @pytest.mark.performance
-def test_login_flow(unauthenticated_page: Page) -> None:
+def test_login_flow(
+    unauthenticated_page: Page,
+    results_collector: list,
+) -> None:
     """Measure the full login flow: page load + credential entry + redirect.
 
     Reports two timings:
@@ -90,22 +102,33 @@ def test_login_flow(unauthenticated_page: Page) -> None:
     username, password = _require_credentials()
     login_page = LoginPage(page)
 
+    network_load = NetworkCapture()
+    network_load.start(page)
     with measure_action("Login page load (pre-login)") as page_load_clock:
         page.goto(BASE_URL, wait_until="commit")
         login_page.wait_for_login_form()
+    network_load.stop()
 
+    network_login = NetworkCapture()
+    network_login.start(page)
     with measure_action("Login credential submission") as login_clock:
         login_page.login(username, password)
         page.wait_for_url(f"{BASE_URL}/**", timeout=30_000)
+    network_login.stop()
 
     screenshot_path = take_screenshot(page, "login", "post_login")
 
     page_load_result = MeasurementResult.from_wall_clock(
         "Login", "page_load", page_load_clock[0],
+        network_capture=network_load,
     )
     login_result = MeasurementResult.from_wall_clock(
-        "Login", "login_submit", login_clock[0], screenshot_path=screenshot_path,
+        "Login", "login_submit", login_clock[0],
+        network_capture=network_login,
+        screenshot_path=screenshot_path,
     )
+    results_collector.append(page_load_result)
+    results_collector.append(login_result)
 
     logger.info(
         "Login flow — page load: %.0f ms | login submit: %.0f ms | total: %.0f ms",

@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from core.network_capture import NetworkCapture
+
 if TYPE_CHECKING:
     from core.console_capture import ConsoleCapture
     from core.timing import NavigationTiming, WebVitals
@@ -78,6 +80,8 @@ class MeasurementResult:
     trace_path: str = ""
     har_path: str = ""
     notes: str = ""
+    network_calls: list[dict] = field(default_factory=list)
+    network_summary: dict = field(default_factory=dict)
 
     def compute_all(self) -> None:
         """Recompute statistics on every aggregated metric."""
@@ -105,9 +109,10 @@ class MeasurementResult:
         vitals: WebVitals,
         *,
         console: ConsoleCapture | None = None,
+        network_capture: NetworkCapture | None = None,
         screenshot_path: str = "",
     ) -> MeasurementResult:
-        """Build a result populated with navigation timing, vitals, and console data."""
+        """Build a result populated with navigation timing, vitals, console, and network data."""
         result = cls(page_name=page_name, action=action)
         result.wall_clock.samples.append(wall_clock_ms)
         result.ttfb.samples.append(nav.ttfb_ms)
@@ -118,6 +123,9 @@ class MeasurementResult:
         result.cls.samples.append(vitals.cls)
         if console is not None:
             result.console_error_count = console.error_count
+        if network_capture is not None:
+            result.network_calls = network_capture.to_list()
+            result.network_summary = network_capture.get_summary()
         result.screenshot_path = screenshot_path
         result.compute_all()
         return result
@@ -129,11 +137,15 @@ class MeasurementResult:
         action: str,
         wall_clock_ms: float,
         *,
+        network_capture: NetworkCapture | None = None,
         screenshot_path: str = "",
     ) -> MeasurementResult:
-        """Build a minimal result with only a wall-clock sample."""
+        """Build a minimal result with only a wall-clock sample (and optional network)."""
         result = cls(page_name=page_name, action=action)
         result.wall_clock.samples.append(wall_clock_ms)
+        if network_capture is not None:
+            result.network_calls = network_capture.to_list()
+            result.network_summary = network_capture.get_summary()
         result.screenshot_path = screenshot_path
         result.compute_all()
         return result
@@ -149,4 +161,6 @@ class MeasurementResult:
             "trace_path": self.trace_path,
             "har_path": self.har_path,
             "notes": self.notes,
+            "network_summary": self.network_summary,
+            "network_calls": self.network_calls,
         }
