@@ -1,0 +1,39 @@
+# Virtual environment
+venv/
+.venv/
+env/
+.env/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Pytest cache and reports
+.pytest_cache/
+test-results/
+playwright-report/
+reports/
+*.html
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Playwright browsers (installed separately via playwright install)
+# Uncomment if you want to exclude them:
+# /ms-playwright/
