@@ -102,6 +102,8 @@ pytest --headed
 | `--mode measure` | *(default)* Collect performance data. |
 | `--mode benchmark` | Compare results against a baseline. |
 | `--baseline PATH` | Path to a baseline JSON file (used with `--mode benchmark`). |
+| `--iterations N` | Number of times to run each performance flow, including warmup (default: `1`). Use e.g. `11` for deep-dive (1 warmup + 10 measured). |
+| `--warmup N` | Number of initial iterations to discard as warm-up (default: `0`). Use e.g. `1` with `--iterations 11`. |
 | `--headed` | Run with a visible browser window (Playwright built-in). |
 | `--browser chromium\|firefox\|webkit` | Choose browser engine (Playwright built-in, default: `chromium`). |
 
@@ -110,6 +112,12 @@ pytest --headed
 ```bash
 # Quick headed run, single session
 pytest tests/test_nav_tab_load.py --headed --single-session
+
+# Deep-dive: 10 measured runs per flow (1 warmup discarded), statistical aggregation (median, P95, std dev)
+pytest -m performance --iterations 11 --warmup 1
+
+# Single tab with 3 iterations, 1 warmup
+pytest tests/test_nav_tab_load.py -k "Vaults" --iterations 3 --warmup 1 --headed
 
 # Benchmark against a previous baseline
 pytest --mode benchmark --baseline results/baseline.json
@@ -171,6 +179,21 @@ Defined in `pytest.ini`:
 | `smoke` | Quick sanity checks before a full performance run |
 | `pagination` | Pagination performance tests (next-page table reload) |
 
-## Artifacts
+## Artifacts and reports
 
-Screenshots and reports are saved under `artifacts/` and `reports/`. These directories are gitignored (except `.gitkeep` files).
+Each performance run writes to a timestamped directory under `reports/` (e.g. `reports/2026-03-12_18-10-34/`). These directories are gitignored (except `.gitkeep` files).
+
+### Run directory layout
+
+| Path | Description |
+|------|--------------|
+| `reports/<run>/json/results.json` | Full results: per (page, action) metrics, network summary, screenshot/trace paths. |
+| `reports/<run>/json/detailed_metrics_report.json` | Metrics-only report: run_config (iterations, warmup) and per (page, action) full metrics block. |
+| `reports/<run>/detailed_metrics_report.html` | Same metrics as HTML with short explanations of what each metric measures. |
+| `reports/<run>/csv/results.csv` | Flattened CSV of key metrics per run. |
+| `reports/<run>/performance_investigation_report.html` | Main HTML report (summary, deep-dive, network, artifacts). |
+| `reports/<run>/screenshots/` | One screenshot per flow (from last iteration when using `--iterations`). |
+| `reports/<run>/har/` | HAR file(s) for network evidence. |
+| `reports/<run>/traces/` | Playwright traces (when enabled). |
+
+When using `--iterations` > 1, each flow is run multiple times (after discarding `--warmup` runs). Results are aggregated: one row per (page, action) with statistics over the measured samples (median, P95, P99, std dev). The detailed metrics report files reflect these aggregated statistics.

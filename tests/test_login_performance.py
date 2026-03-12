@@ -43,47 +43,72 @@ def _require_credentials() -> tuple[str, str]:
 def test_login_page_load(
     unauthenticated_page: Page,
     results_collector: list,
+    performance_iterations: tuple[int, int],
 ) -> None:
     """Measure time to load and render the Auth0 login page.
 
     Clock starts at navigation and stops when the email input is visible.
+    With --iterations > 1, runs the load multiple times and aggregates timings.
     """
     page = unauthenticated_page
     login_page = LoginPage(page)
+    total, warmup = performance_iterations
 
     console = ConsoleCapture()
     console.start(page)
-    network = NetworkCapture()
-    network.start(page)
 
-    with measure_action("Login page load") as wall_clock:
-        page.goto(BASE_URL, wait_until="commit")
-        form_ready_ms = login_page.wait_for_login_form()
+    base_result: MeasurementResult | None = None
+    measured_count = 0
 
-    network.stop()
-    nav = capture_navigation_timing(page)
-    vitals = capture_web_vitals(page)
-    screenshot_path = take_screenshot(page, "login", "page_load")
+    for i in range(total):
+        network = NetworkCapture()
+        network.start(page)
+
+        with measure_action("Login page load") as wall_clock:
+            page.goto(BASE_URL, wait_until="commit")
+            form_ready_ms = login_page.wait_for_login_form()
+
+        network.stop()
+        nav = capture_navigation_timing(page)
+        vitals = capture_web_vitals(page)
+
+        result = MeasurementResult.from_page_load(
+            "Login",
+            "page_load",
+            wall_clock[0],
+            nav,
+            vitals,
+            console=console,
+            network_capture=network,
+            screenshot_path="",
+        )
+
+        if i >= warmup:
+            measured_count += 1
+            if base_result is None:
+                base_result = result
+            else:
+                base_result.merge_in(result)
+            if i == total - 1:
+                base_result.screenshot_path = take_screenshot(
+                    page, "login", "page_load",
+                )
+
     console.stop()
 
-    result = MeasurementResult.from_page_load(
-        "Login",
-        "page_load",
-        wall_clock[0],
-        nav,
-        vitals,
-        console=console,
-        network_capture=network,
-        screenshot_path=screenshot_path,
-    )
-    results_collector.append(result)
+    if base_result is None:
+        return
+
+    base_result.compute_all()
+    results_collector.append(base_result)
 
     logger.info(
-        "Login page load — wall: %.0f ms | form ready: %.0f ms | TTFB: %.0f ms | errors: %d",
-        result.wall_clock.median,
-        form_ready_ms,
-        result.ttfb.median,
-        result.console_error_count,
+        "Login page load (n=%d) — wall median: %.0f ms | P95: %.0f ms | TTFB: %.0f ms | errors: %d",
+        measured_count,
+        base_result.wall_clock.median,
+        base_result.wall_clock.p95,
+        base_result.ttfb.median,
+        base_result.console_error_count,
     )
 
 

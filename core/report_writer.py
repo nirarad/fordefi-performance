@@ -134,22 +134,108 @@ def write_json(
     return out_path
 
 
+def _build_detailed_metrics_html(
+    results: list[MeasurementResult],
+    iterations: int | None = None,
+    warmup: int | None = None,
+) -> str:
+    """Build HTML for detailed metrics report (tables per page/action)."""
+    exec_date = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    iter_str = str(iterations) if iterations is not None else "—"
+    warmup_str = str(warmup) if warmup is not None else "—"
+    run_config_p = (
+        f"<p><strong>Run config:</strong> iterations = {_h(iter_str)}, warmup = {_h(warmup_str)}"
+        + (f" (measured runs = {iterations - warmup})" if (iterations is not None and warmup is not None) else "")
+        + "</p>"
+    )
+    sections: list[str] = []
+    for r in results:
+        rows: list[str] = []
+        for m in r._all_metrics():
+            d = m.to_dict()
+            rows.append(
+                f"<tr><td>{_h(d['name'])}</td><td>{d['sample_count']}</td>"
+                f"<td>{d['median_ms']}</td><td>{d['p95_ms']}</td><td>{d['p99_ms']}</td>"
+                f"<td>{d['std_dev_ms']}</td><td>{d['min_ms']}</td><td>{d['max_ms']}</td></tr>"
+            )
+        table_body = "\n".join(rows)
+        sections.append(
+            f"<h3>{_h(r.page_name)} — {_h(r.action)}</h3>\n"
+            f"<p>Console errors: {r.console_error_count}</p>\n"
+            "<table>\n"
+            "<thead><tr><th>Metric</th><th>sample_count</th><th>median_ms</th>"
+            "<th>p95_ms</th><th>p99_ms</th><th>std_dev_ms</th><th>min_ms</th><th>max_ms</th></tr></thead>\n"
+            f"<tbody>\n{table_body}\n</tbody>\n"
+            "</table>"
+        )
+    body_sections = "\n<hr>\n\n".join(sections)
+    metrics_explanation = """
+<h2>What each metric measures</h2>
+<ul>
+<li><strong>wall_clock</strong> — Total time for the measured action (e.g. navigation or click), from test start to finish (ms).</li>
+<li><strong>ttfb</strong> — Time to First Byte: time until the first byte of the response is received from the server (ms).</li>
+<li><strong>dom_content_loaded</strong> — When the HTML has been fully loaded and parsed; DOM is ready, scripts may still run (ms).</li>
+<li><strong>dom_interactive</strong> — When the document has finished loading and the DOM is ready for user interaction (ms).</li>
+<li><strong>load_event_end</strong> — When the load event has finished and all resources have loaded (ms).</li>
+<li><strong>lcp</strong> — Largest Contentful Paint: when the largest visible content element is rendered; Core Web Vital (ms).</li>
+<li><strong>cls</strong> — Cumulative Layout Shift: measure of visual stability (unwanted layout jumps); lower is better; Core Web Vital (unitless).</li>
+</ul>
+"""
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Detailed Metrics Report — Fordefi Performance</title>
+<style>
+body {{ font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; max-width: 960px; margin: 0 auto; padding: 1.5rem; color: #1a1a1a; }}
+h1 {{ font-size: 1.5rem; border-bottom: 2px solid #333; padding-bottom: 0.5rem; }}
+h2 {{ font-size: 1.25rem; margin-top: 2rem; color: #333; }}
+h3 {{ font-size: 1.1rem; margin-top: 1.25rem; }}
+p {{ margin: 0.5rem 0; }}
+table {{ border-collapse: collapse; width: 100%; margin: 0.75rem 0; font-size: 0.9rem; }}
+th, td {{ border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; }}
+th {{ background: #f0f0f0; font-weight: 600; }}
+tr:nth-child(even) {{ background: #f9f9f9; }}
+ul {{ margin: 0.5rem 0; padding-left: 1.5rem; }}
+</style>
+</head>
+<body>
+<h1>Detailed Metrics Report</h1>
+<p><em>Generated: {exec_date}</em></p>
+{run_config_p}
+<p>Statistics across runs: sample count, median, P95, P99, std dev, min, max (ms unless noted).</p>
+{metrics_explanation}
+<hr>
+{body_sections}
+</body>
+</html>
+"""
+
+
 def write_detailed_metrics_report(
     results: list[MeasurementResult],
     run_dir: str | None = None,
+    iterations: int | None = None,
+    warmup: int | None = None,
 ) -> tuple[str, str]:
     """Write a separate report focused on metrics (sample_count, median, P95, std dev, etc.).
 
     Produces:
-    - detailed_metrics_report.json: per (page_name, action) full metrics block.
-    - detailed_metrics_report.md: human-readable tables of metric statistics.
+    - detailed_metrics_report.json: run_config (iterations, warmup) + per (page_name, action) full metrics block.
+    - detailed_metrics_report.html: same content as HTML with metric explanations at the top.
 
-    Returns (json_path, md_path).
+    Returns (json_path, html_path).
     """
     base = _output_base(run_dir)
     json_dir = _run_subdir(base, "json")
     json_path = os.path.join(json_dir, "detailed_metrics_report.json")
-    md_path = os.path.join(base, "detailed_metrics_report.md")
+    html_path = os.path.join(base, "detailed_metrics_report.html")
+
+    run_config = {
+        "iterations": iterations if iterations is not None else 1,
+        "warmup": warmup if warmup is not None else 0,
+    }
 
     entries: list[dict] = []
     for r in results:
@@ -161,42 +247,20 @@ def write_detailed_metrics_report(
             "metrics": {m.name: m.to_dict() for m in r._all_metrics()},
         })
 
+    json_payload = {"run_config": run_config, "results": entries}
     with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(entries, f, indent=2, ensure_ascii=False)
+        json.dump(json_payload, f, indent=2, ensure_ascii=False)
     logger.info("Detailed metrics JSON written to %s", json_path)
 
-    lines: list[str] = []
-    lines.append("# Detailed Metrics Report")
-    lines.append("")
-    lines.append(f"*Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}*")
-    lines.append("")
-    lines.append("Statistics across runs: sample count, median, P95, P99, std dev, min, max (ms).")
-    lines.append("")
-    lines.append("---")
-    lines.append("")
-
-    for r in results:
-        lines.append(f"## {r.page_name} — {r.action}")
-        lines.append("")
-        lines.append("| Metric | sample_count | median_ms | p95_ms | p99_ms | std_dev_ms | min_ms | max_ms |")
-        lines.append("|--------|--------------|-----------|--------|--------|------------|--------|--------|")
-        for m in r._all_metrics():
-            d = m.to_dict()
-            lines.append(
-                f"| {d['name']} | {d['sample_count']} | {d['median_ms']} | "
-                f"{d['p95_ms']} | {d['p99_ms']} | {d['std_dev_ms']} | "
-                f"{d['min_ms']} | {d['max_ms']} |"
-            )
-        lines.append("")
-        lines.append(f"Console errors: {r.console_error_count}")
-        lines.append("")
-        lines.append("---")
-        lines.append("")
-
-    with open(md_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-    logger.info("Detailed metrics Markdown written to %s", md_path)
-    return (json_path, md_path)
+    html_content = _build_detailed_metrics_html(
+        results,
+        iterations=iterations,
+        warmup=warmup,
+    )
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    logger.info("Detailed metrics HTML written to %s", html_path)
+    return (json_path, html_path)
 
 
 def write_csv(
@@ -693,12 +757,14 @@ def _build_artifacts_rows(
     har_dir = "har"
     raw_metrics = "json/results.json"
     html_display = "performance_investigation_report.html"
+    detailed_report = "detailed_metrics_report.html"
     return "\n".join([
         f"<tr><td>Playwright traces</td><td>{_h(traces_dir)}</td></tr>",
         f"<tr><td>Screenshots</td><td>{_h(screenshots_dir)}</td></tr>",
         f"<tr><td>HAR files</td><td>{_h(har_dir)}</td></tr>",
         f"<tr><td>JSON metrics</td><td>{_h(raw_metrics)}</td></tr>",
         f"<tr><td>HTML report</td><td>{_h(html_display)}</td></tr>",
+        f"<tr><td>Detailed metrics report</td><td><a href=\"{_h(detailed_report)}\">{_h(detailed_report)}</a></td></tr>",
     ])
 
 
@@ -709,6 +775,8 @@ def write_html_report(
     json_path: str = "",
     run_mode: str = "measure",
     run_dir: str | None = None,
+    iterations: int | None = None,
+    warmup: int | None = None,
 ) -> str:
     """Generate performance investigation report as HTML (concise template)."""
     base = _output_base(run_dir)
@@ -739,6 +807,8 @@ def write_html_report(
         "base_url",
         "exec_date",
         "run_mode",
+        "iterations",
+        "warmup",
         "git_version",
         "performance_summary_rows",
         "deep_dive_sections",
@@ -750,10 +820,14 @@ def write_html_report(
     ]:
         safe_template = safe_template.replace(f"{{{{{name}}}}}", f"{{{name}}}")
 
+    iter_str = str(iterations) if iterations is not None else "—"
+    warmup_str = str(warmup) if warmup is not None else "—"
     html = safe_template.format(
         base_url=_h(BASE_URL),
         exec_date=_h(exec_date),
         run_mode=_h(run_mode),
+        iterations=_h(iter_str),
+        warmup=_h(warmup_str),
         git_version=_h(git_version),
         performance_summary_rows=_build_performance_summary_rows(by_page),
         deep_dive_sections=_build_deep_dive_sections(by_page),

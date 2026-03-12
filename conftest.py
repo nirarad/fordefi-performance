@@ -62,6 +62,18 @@ def pytest_addoption(parser):
         default=False,
         help="Reuse a single page (tab) across all tests instead of a fresh tab per test",
     )
+    parser.addoption(
+        "--iterations",
+        type=int,
+        default=1,
+        help="Number of times to run each performance flow (including warmup). Use 11 for deep-dive (1 warmup + 10 measured).",
+    )
+    parser.addoption(
+        "--warmup",
+        type=int,
+        default=0,
+        help="Number of initial iterations to discard as warm-up (e.g. 1 when using --iterations 11).",
+    )
 
 
 @pytest.fixture(scope="session")
@@ -72,6 +84,19 @@ def run_mode(request):
 @pytest.fixture(scope="session")
 def baseline_path(request):
     return request.config.getoption("--baseline")
+
+
+@pytest.fixture(scope="session")
+def performance_iterations(request):
+    """Return (total_iterations, warmup_count) for multi-iteration performance runs.
+    Measured runs = total_iterations - warmup_count. Default (1, 0) = single run."""
+    total = request.config.getoption("--iterations", default=1)
+    warmup = request.config.getoption("--warmup", default=0)
+    if total < 1:
+        total = 1
+    if warmup < 0 or warmup >= total:
+        warmup = 0
+    return (total, warmup)
 
 
 @pytest.fixture(scope="session")
@@ -277,11 +302,14 @@ def pytest_sessionfinish(session, exitstatus):
     run_dir = getattr(session.config, RUN_DIR_ATTR, None)
     run_mode = session.config.getoption("--mode", default="measure")
     baseline_path = session.config.getoption("--baseline", default=None)
+    iterations = session.config.getoption("--iterations", default=1)
+    warmup = session.config.getoption("--warmup", default=0)
 
     from core.report_writer import (
         write_benchmark_diff_csv,
         write_benchmark_diff_json,
         write_csv,
+        write_detailed_metrics_report,
         write_html_report,
         write_json,
     )
@@ -291,12 +319,20 @@ def pytest_sessionfinish(session, exitstatus):
     if run_mode == "measure":
         json_path = write_json(results, run_dir=run_dir)
         write_csv(results, run_dir=run_dir)
+        write_detailed_metrics_report(
+            results,
+            run_dir=run_dir,
+            iterations=iterations,
+            warmup=warmup,
+        )
         write_html_report(
             results,
             comparison=None,
             json_path=json_path,
             run_mode=run_mode,
             run_dir=run_dir,
+            iterations=iterations,
+            warmup=warmup,
         )
         if run_dir:
             logger.info("Report and artifacts written to %s", run_dir)
@@ -320,6 +356,8 @@ def pytest_sessionfinish(session, exitstatus):
             json_path=json_path,
             run_mode=run_mode,
             run_dir=run_dir,
+            iterations=iterations,
+            warmup=warmup,
         )
         if run_dir:
             logger.info("Report and artifacts written to %s", run_dir)
@@ -327,10 +365,18 @@ def pytest_sessionfinish(session, exitstatus):
         logger.warning("Benchmark mode set but --baseline not provided; writing measure outputs only.")
         json_path = write_json(results, run_dir=run_dir)
         write_csv(results, run_dir=run_dir)
+        write_detailed_metrics_report(
+            results,
+            run_dir=run_dir,
+            iterations=iterations,
+            warmup=warmup,
+        )
         write_html_report(
             results,
             comparison=None,
             json_path=json_path,
             run_mode=run_mode,
             run_dir=run_dir,
+            iterations=iterations,
+            warmup=warmup,
         )
