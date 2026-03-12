@@ -63,7 +63,72 @@ VAULTS_PAGE = PageSpec(
     spinner_selector=".MuiCircularProgress-circleIndeterminate",
 )
 
+CONNECTED_ACCOUNTS_PAGE = PageSpec(
+    name="Connected Accounts",
+    path="/connected-accounts",
+    test_priority=TestPriority.HIGH,
+    supports_table=True,
+    supports_spinner=True,
+    ready_selector=".MuiDataGrid-row",
+    table_selector=".MuiDataGrid-main",
+    row_selector=".MuiDataGrid-row",
+    spinner_selector=".MuiCircularProgress-circleIndeterminate",
+)
+
+ASSETS_PAGE = PageSpec(
+    name="Assets",
+    path="/assets",
+    test_priority=TestPriority.HIGH,
+    supports_table=True,
+    supports_spinner=True,
+    ready_selector=".MuiDataGrid-row",
+    table_selector=".MuiDataGrid-main",
+    row_selector=".MuiDataGrid-row",
+    spinner_selector=".MuiCircularProgress-circleIndeterminate",
+)
+
+TRANSACTIONS_PAGE = PageSpec(
+    name="Transactions",
+    path="/transactions-history",
+    test_priority=TestPriority.MEDIUM,
+    supports_table=True,
+    supports_spinner=True,
+    ready_selector=".MuiDataGrid-row",
+    table_selector=".MuiDataGrid-main",
+    row_selector=".MuiDataGrid-row",
+    spinner_selector=".MuiCircularProgress-circleIndeterminate",
+)
+
+ALLOWANCES_PAGE = PageSpec(
+    name="Allowances",
+    path="/allowances",
+    test_priority=TestPriority.MEDIUM,
+    supports_table=True,
+    supports_spinner=True,
+    ready_selector=".MuiDataGrid-row",
+    table_selector=".MuiDataGrid-main",
+    row_selector=".MuiDataGrid-row",
+    spinner_selector=".MuiCircularProgress-circleIndeterminate",
+)
+
+ADDRESS_BOOK_PAGE = PageSpec(
+    name="Address Book",
+    path="/address-book",
+    test_priority=TestPriority.LOW,
+    supports_table=True,
+    supports_spinner=True,
+    ready_selector=".MuiDataGrid-row",
+    table_selector=".MuiDataGrid-main",
+    row_selector=".MuiDataGrid-row",
+    spinner_selector=".MuiCircularProgress-circleIndeterminate",
+)
+
 # Registry of all page specs for parametrized test discovery
 ALL_PAGES: list[PageSpec] = [
     VAULTS_PAGE,
+    CONNECTED_ACCOUNTS_PAGE,
+    ASSETS_PAGE,
+    TRANSACTIONS_PAGE,
+    ALLOWANCES_PAGE,
+    ADDRESS_BOOK_PAGE,
 ]
