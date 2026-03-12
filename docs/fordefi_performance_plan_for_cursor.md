@@ -80,6 +80,120 @@ If a required selector does not have a stable `data-testid`, stop and request ma
 
 ---
 
+## Target environment
+
+- **Base URL**: `https://app.preprod.fordefi.com/`
+- **Role**: viewer (read-only access). The logged-in user cannot create, modify, or delete data. All tests observe existing data only.
+- **Authentication**: username + password only. No MFA/2FA or additional auth steps are required for this user.
+
+### Viewer role constraints
+
+Because the account is read-only:
+- Tests must **not** attempt write operations (create vault, send transaction, etc.)
+- All scenarios are observation-only: page loads, table rendering, search, sort, filter, sidebar open
+- If any UI element is disabled or hidden due to viewer permissions, skip it gracefully and log a note
+
+---
+
+## Authentication flow (CRITICAL - must be implemented)
+
+The Fordefi preprod requires login before any page is accessible. Without authentication handling, no test can run. Login is username + password only (no MFA).
+
+### Strategy: automated login + reusable `storageState`
+
+Since login is simple username/password with no MFA, it can be fully automated:
+
+1. **Automated login** via a setup script or a session-scoped fixture:
+   - Navigate to the login page
+   - Fill username and password from `.env`
+   - Submit and wait for the dashboard to load
+   - Save the authenticated browser state via `context.storage_state(path="auth/storage_state.json")`
+
+2. **All subsequent tests reuse the saved state**:
+   - Load `storage_state.json` into the browser context via pytest-playwright's `browser_context_args`
+   - This skips login for every test, saving time and avoiding repeated login flows
+
+### Implementation in conftest.py
+
+```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+AUTH_STATE_PATH = "auth/storage_state.json"
+BASE_URL = os.getenv("BASE_URL", "https://app.preprod.fordefi.com")
+
+@pytest.fixture(scope="session")
+def browser_context_args(browser_context_args):
+    context_args = {
+        **browser_context_args,
+        "viewport": {"width": 1280, "height": 720},
+        "ignore_https_errors": True,
+        "base_url": BASE_URL,
+    }
+    if os.path.exists(AUTH_STATE_PATH):
+        context_args["storage_state"] = AUTH_STATE_PATH
+    return context_args
+```
+
+### Login helper script
+
+Provide `scripts/save_auth_state.py` that automates login and saves session state. No manual interaction needed.
+
+```python
+import os
+from dotenv import load_dotenv
+from playwright.sync_api import sync_playwright
+
+load_dotenv()
+
+def main():
+    base_url = os.getenv("BASE_URL", "https://app.preprod.fordefi.com")
+    username = os.getenv("USERNAME")
+    password = os.getenv("PASSWORD")
+
+    if not username or not password:
+        raise ValueError("USERNAME and PASSWORD must be set in .env")
+
+    os.makedirs("auth", exist_ok=True)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_context(
+            viewport={"width": 1280, "height": 720},
+            ignore_https_errors=True,
+        )
+        page = context.new_page()
+        page.goto(base_url)
+
+        # Fill login form - adjust selectors after inspecting the actual login page
+        page.get_by_label("Email").fill(username)
+        page.get_by_label("Password").fill(password)
+        page.get_by_role("button", name="Log in").click()
+
+        # Wait for dashboard to confirm successful login
+        page.wait_for_url("**/dashboard**", timeout=30_000)
+
+        context.storage_state(path="auth/storage_state.json")
+        browser.close()
+        print("Auth state saved to auth/storage_state.json")
+
+if __name__ == "__main__":
+    main()
+```
+
+Note: the login form selectors above (`get_by_label("Email")`, etc.) are initial guesses. Adjust them after inspecting the actual Fordefi login page. If stable selectors are not obvious, use `page.pause()` to inspect interactively.
+
+### Auth state management rules
+
+- `auth/storage_state.json` must be in `.gitignore` (contains session tokens)
+- If the state expires, re-run `python scripts/save_auth_state.py`
+- Tests must detect expired auth (e.g. redirect to login page) and fail with a clear message, not hang
+- Credentials are read from `.env` (never hardcoded)
+
+---
+
 ## Recommended toolset
 
 Use these as the primary toolchain.
@@ -248,6 +362,12 @@ fordefi-perf/
   pyrightconfig.json
   .env.example
   conftest.py
+
+  auth/
+    storage_state.json   # gitignored, created by login helper
+
+  scripts/
+    save_auth_state.py   # one-time headed login helper
 
   configs/
     __init__.py
@@ -741,9 +861,12 @@ This is the execution order Cursor should follow.
 1. Create repository skeleton (including `__init__.py` in all package directories).
 2. Add dependencies.
 3. Configure Playwright + pytest (register custom CLI options via `pytest_addoption`).
-4. Add `.env.example` for credentials/base URL.
+4. Add `.env.example` for credentials/base URL (`https://app.preprod.fordefi.com`).
 5. Add artifact output folders.
-6. Do **not** override the built-in `page` fixture from pytest-playwright.
+6. Create `scripts/save_auth_state.py` login helper.
+7. Create `auth/` directory and add `auth/storage_state.json` to `.gitignore`.
+8. Configure `browser_context_args` to load `storage_state.json` and set `base_url`.
+9. Do **not** override the built-in `page` fixture from pytest-playwright.
 
 ### Phase 2 - Core framework
 
@@ -808,7 +931,7 @@ Avoid unnecessary stack expansion.
 
 - Use Python only.
 - Keep implementation pragmatic, not enterprise-heavy.
-- Prefer `Protocol` over `ABC` for interfaces. Fall back to `ABC` only when runtime enforcement is needed.
+- Prefer `Protocol` for interfaces. Fall back to `ABC` only when runtime enforcement is needed.
 - Prefer small modules and explicit type hints.
 - Avoid speculative abstractions.
 - No selector guessing when `data-testid` is missing.
@@ -823,15 +946,16 @@ Avoid unnecessary stack expansion.
 
 The task is complete when all of the following exist:
 
-1. Reusable Python + Playwright framework with Protocol-based page model.
-2. Broad scan covering scoped pages.
-3. Deep-dive coverage for vaults, transactions, assets, transaction policy.
-4. DDT-based execution.
-5. Measure mode and benchmark mode (with `pytest_addoption` registration).
-6. Console error capture integrated into results.
-7. Browser Performance API metrics (navigation timing, Core Web Vitals) captured alongside custom timings.
-8. Statistical aggregation of multi-iteration measurements (median, P95, std dev).
-9. JSON/CSV artifacts.
-10. Markdown investigation report.
-11. Clear extension instructions for adding new pages and test cases.
+1. Authentication flow: `scripts/save_auth_state.py` + `storage_state.json` reuse in `browser_context_args`.
+2. Reusable Python + Playwright framework with Protocol-based page model.
+3. Broad scan covering scoped pages (all tests run as viewer against `https://app.preprod.fordefi.com`).
+4. Deep-dive coverage for vaults, transactions, assets, transaction policy.
+5. DDT-based execution.
+6. Measure mode and benchmark mode (with `pytest_addoption` registration).
+7. Console error capture integrated into results.
+8. Browser Performance API metrics (navigation timing, Core Web Vitals) captured alongside custom timings.
+9. Statistical aggregation of multi-iteration measurements (median, P95, std dev).
+10. JSON/CSV artifacts.
+11. Markdown investigation report.
+12. Clear extension instructions for adding new pages and test cases.
 

@@ -9,6 +9,9 @@ env/
 .env.local
 .env.*.local
 
+# Auth state (contains session tokens)
+auth/storage_state.json
+
 # Pytest cache and reports
 .pytest_cache/
 test-results/
