@@ -46,10 +46,12 @@ def main():
         logger.info("Navigating to %s", base_url)
         page.goto(base_url)
 
-        logger.info("Filling login form")
-        page.get_by_label("Email").fill(username)
-        page.get_by_label("Password").fill(password)
-        page.get_by_role("button", name="Log in").click()
+        # Import here to avoid circular dependency when running as standalone script
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from pages.login_page import LoginPage
+
+        login = LoginPage(page)
+        login.login(username, password)
 
         logger.info("Waiting for post-login navigation")
         page.wait_for_url(f"{base_url}/**", timeout=30_000)
