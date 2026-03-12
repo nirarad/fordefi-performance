@@ -17,10 +17,12 @@ from core.metrics import MeasurementResult
 logger = get_logger(__name__)
 
 __all__ = [
+    "load_results_from_json",
     "write_benchmark_diff_csv",
     "write_benchmark_diff_json",
     "write_console_errors",
     "write_csv",
+    "write_detailed_benchmark_report",
     "write_detailed_metrics_report",
     "write_html_report",
     "write_json",
@@ -37,10 +39,7 @@ _cached_default_run_dir: str | None = None
 
 
 def _run_folder_timestamp() -> str:
-    """Report folder name: local timestamp + salt to avoid collisions in parallel runs.
-
-    Format: 2025-03-12_14-30-22_<8-char hex salt>, e.g. 2025-03-12_14-30-22_a1b2c3d4.
-    """
+    """Report folder name: local timestamp + salt (e.g. 2025-03-12_14-30-22_a1b2c3d4)."""
     local_now = datetime.now()
     ts = local_now.strftime("%Y-%m-%d_%H-%M-%S")
     salt = secrets.token_hex(4)
@@ -142,6 +141,19 @@ def write_json(
         json.dump(data, f, indent=2, ensure_ascii=False)
     logger.info("JSON results written to %s", out_path)
     return out_path
+
+
+def load_results_from_json(path: str) -> list[MeasurementResult]:
+    """Load results from a JSON file (results.json or detailed_metrics_report.json format)."""
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    if isinstance(data, list):
+        entries = data
+    elif isinstance(data, dict) and "results" in data:
+        entries = data["results"]
+    else:
+        entries = [data] if isinstance(data, dict) else []
+    return [MeasurementResult.from_dict(e) for e in entries]
 
 
 def _build_detailed_metrics_html(
@@ -810,6 +822,78 @@ def _build_benchmark_section(comparison: list[RowComparison] | None) -> str:
     return f"<p>Included only when running in <strong>benchmark mode</strong>.</p>{table_html}<p><strong>Summary</strong><br>{regressed} regressed, {improved} improved vs baseline.</p>"
 
 
+def _build_detailed_benchmark_html(comparisons: list[RowComparison]) -> str:
+    """Build HTML for detailed benchmark report (per page/action metric comparison tables)."""
+    exec_date = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    sections: list[str] = []
+    for c in comparisons:
+        metric_rows: list[str] = []
+        for m in c.metrics:
+            if m.baseline_median == 0 and m.current_median == 0:
+                continue
+            status_class = f" status-{m.status}" if m.status in ("regressed", "improved") else ""
+            metric_rows.append(
+                f"<tr><td>{_h(m.name)}</td><td>{m.baseline_median:.2f}</td><td>{m.current_median:.2f}</td>"
+                f"<td>{m.delta:+.2f}</td><td>{m.pct_change:+.1f}%</td><td class=\"{status_class}\">{_h(m.status)}</td></tr>"
+            )
+        if not metric_rows:
+            metric_rows.append("<tr><td colspan=\"6\">No metric data</td></tr>")
+        table_body = "\n".join(metric_rows)
+        action_label = _benchmark_metric_label(c.action)
+        sections.append(
+            f"<h3>{_h(c.page_name)} — {_h(action_label)}</h3>\n"
+            f"<p>Row status: <strong>{c.row_status}</strong>"
+            f" | Console errors: baseline {c.console_errors_baseline}, current {c.console_errors_current}</p>\n"
+            "<table>\n"
+            "<thead><tr><th>Metric</th><th>Baseline (ms)</th><th>Current (ms)</th><th>Delta</th><th>Change %</th><th>Status</th></tr></thead>\n"
+            f"<tbody>\n{table_body}\n</tbody>\n</table>"
+        )
+    body = "\n<hr>\n\n".join(sections)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Detailed Benchmark Report — Fordefi Performance</title>
+<style>
+body {{ font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; max-width: 960px; margin: 0 auto; padding: 1.5rem; color: #1a1a1a; }}
+h1 {{ font-size: 1.5rem; border-bottom: 2px solid #333; padding-bottom: 0.5rem; }}
+h2 {{ font-size: 1.25rem; margin-top: 2rem; color: #333; }}
+h3 {{ font-size: 1.1rem; margin-top: 1.25rem; }}
+table {{ border-collapse: collapse; width: 100%; margin: 0.75rem 0; font-size: 0.9rem; }}
+th, td {{ border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; }}
+th {{ background: #f0f0f0; font-weight: 600; }}
+tr:nth-child(even) {{ background: #f9f9f9; }}
+.status-regressed {{ color: #c00; font-weight: 600; }}
+.status-improved {{ color: #080; font-weight: 600; }}
+</style>
+</head>
+<body>
+<h1>Detailed Benchmark Report</h1>
+<p><em>Generated: {exec_date}</em></p>
+<p>Baseline vs current run: per (page, action) metric comparison (median ms).</p>
+<hr>
+{body}
+</body>
+</html>
+"""
+
+
+def write_detailed_benchmark_report(
+    comparisons: list[RowComparison],
+    path: str | None = None,
+    run_dir: str | None = None,
+) -> str:
+    """Write detailed benchmark comparison HTML (per page/action metric tables). Returns path."""
+    base = _output_base(run_dir)
+    out_path = path if path else os.path.join(base, "detailed_benchmark_report.html")
+    html_content = _build_detailed_benchmark_html(comparisons)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    logger.info("Detailed benchmark report written to %s", out_path)
+    return out_path
+
+
 def _build_console_errors_rows(by_page: dict[str, list[MeasurementResult]]) -> str:
     return "\n".join(
         f"<tr><td>{_h(page)}</td><td>{_get_console_errors(by_page.get(page, []))}</td><td>{_h(_get_console_example_error(by_page.get(page, [])))}</td></tr>"
@@ -846,6 +930,7 @@ def _build_artifacts_rows(
     json_path: str,
     html_path: str,
     run_dir: str | None = None,
+    include_benchmark_report: bool = False,
 ) -> str:
     """Build HTML rows for artifacts table. Uses relative paths (all outputs live in run dir)."""
     traces_dir = "traces"
@@ -854,14 +939,18 @@ def _build_artifacts_rows(
     raw_metrics = "json/results.json"
     html_display = "performance_investigation_report.html"
     detailed_report = "detailed_metrics_report.html"
-    return "\n".join([
+    rows = [
         f"<tr><td>Playwright traces</td><td>{_h(traces_dir)}</td></tr>",
         f"<tr><td>Screenshots</td><td>{_h(screenshots_dir)}</td></tr>",
         f"<tr><td>HAR files</td><td>{_h(har_dir)}</td></tr>",
         f"<tr><td>JSON metrics</td><td>{_h(raw_metrics)}</td></tr>",
         f"<tr><td>HTML report</td><td>{_h(html_display)}</td></tr>",
         f"<tr><td>Detailed metrics report</td><td><a href=\"{_h(detailed_report)}\">{_h(detailed_report)}</a></td></tr>",
-    ])
+    ]
+    if include_benchmark_report:
+        detailed_bench = "detailed_benchmark_report.html"
+        rows.append(f"<tr><td>Detailed benchmark report</td><td><a href=\"{_h(detailed_bench)}\">{_h(detailed_bench)}</a></td></tr>")
+    return "\n".join(rows)
 
 
 def write_html_report(
@@ -931,7 +1020,10 @@ def write_html_report(
         network_summary_rows=_build_network_summary_rows(by_page),
         console_errors_rows=_build_console_errors_rows(by_page),
         artifacts_rows=_build_artifacts_rows(
-            json_path, html_artifact_path, run_dir=base
+            json_path,
+            html_artifact_path,
+            run_dir=base,
+            include_benchmark_report=bool(comparison),
         ),
         conclusion=_h(conclusion),
     )

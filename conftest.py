@@ -300,6 +300,7 @@ def pytest_sessionfinish(session, exitstatus):
         return
 
     run_dir = getattr(session.config, RUN_DIR_ATTR, None)
+
     run_mode = session.config.getoption("--mode", default="measure")
     baseline_path = session.config.getoption("--baseline", default=None)
     iterations = session.config.getoption("--iterations", default=1)
@@ -309,6 +310,7 @@ def pytest_sessionfinish(session, exitstatus):
         write_benchmark_diff_csv,
         write_benchmark_diff_json,
         write_csv,
+        write_detailed_benchmark_report,
         write_detailed_metrics_report,
         write_html_report,
         write_json,
@@ -350,6 +352,13 @@ def pytest_sessionfinish(session, exitstatus):
         diff_data = comparison_to_dict(comparisons)
         write_benchmark_diff_json(diff_data, run_dir=run_dir)
         write_benchmark_diff_csv(diff_data, run_dir=run_dir)
+        write_detailed_metrics_report(
+            results,
+            run_dir=run_dir,
+            iterations=iterations,
+            warmup=warmup,
+        )
+        write_detailed_benchmark_report(comparisons, run_dir=run_dir)
         write_html_report(
             results,
             comparison=comparisons,

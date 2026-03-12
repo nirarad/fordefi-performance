@@ -61,6 +61,23 @@ class AggregatedMetric:
             "max_ms": round(self.max_val, 2),
         }
 
+    @classmethod
+    def from_dict(cls, d: dict) -> AggregatedMetric:
+        """Build from serialized dict (e.g. to_dict output). Preserves stats; samples set to median repeated for sample_count."""
+        name = d.get("name", "")
+        metric = cls(name=name)
+        sample_count = int(d.get("sample_count", 0) or 0)
+        median_ms = float(d.get("median_ms", 0) or 0)
+        metric.median = median_ms
+        metric.p95 = float(d.get("p95_ms", 0) or 0)
+        metric.p99 = float(d.get("p99_ms", 0) or 0)
+        metric.std_dev = float(d.get("std_dev_ms", 0) or 0)
+        metric.min_val = float(d.get("min_ms", 0) or 0)
+        metric.max_val = float(d.get("max_ms", 0) or 0)
+        if sample_count > 0:
+            metric.samples = [median_ms] * sample_count
+        return metric
+
 
 @dataclass
 class MeasurementResult:
@@ -184,3 +201,35 @@ class MeasurementResult:
             "network_summary": self.network_summary,
             "network_calls": self.network_calls,
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> MeasurementResult:
+        """Build from serialized dict (e.g. results.json or to_dict output)."""
+        result = cls(
+            page_name=d.get("page_name", ""),
+            action=d.get("action", ""),
+            timestamp=d.get("timestamp", ""),
+            console_error_count=int(d.get("console_error_count", 0) or 0),
+            console_example_error=d.get("console_example_error", "") or "",
+            screenshot_path=d.get("screenshot_path", "") or "",
+            trace_path=d.get("trace_path", "") or "",
+            har_path=d.get("har_path", "") or "",
+            notes=d.get("notes", "") or "",
+            network_summary=d.get("network_summary") or {},
+            network_calls=d.get("network_calls") or [],
+        )
+        metrics_data = d.get("metrics") or {}
+        all_metrics = result._all_metrics()
+        for m in all_metrics:
+            if m.name in metrics_data:
+                sub = metrics_data[m.name]
+                if isinstance(sub, dict):
+                    restored = AggregatedMetric.from_dict(sub)
+                    m.samples[:] = restored.samples
+                    m.median = restored.median
+                    m.p95 = restored.p95
+                    m.p99 = restored.p99
+                    m.std_dev = restored.std_dev
+                    m.min_val = restored.min_val
+                    m.max_val = restored.max_val
+        return result

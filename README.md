@@ -119,8 +119,15 @@ pytest -m performance --iterations 11 --warmup 1
 # Single tab with 3 iterations, 1 warmup
 pytest tests/test_nav_tab_load.py -k "Vaults" --iterations 3 --warmup 1 --headed
 
-# Benchmark against a previous baseline
-pytest --mode benchmark --baseline results/baseline.json
+# Benchmark against a previous baseline (runs tests, then compares to baseline)
+pytest --mode benchmark --baseline reports/<run>/json/results.json
+# Note: --baseline is only used to load the previous run for comparison. All reports
+# (summary, detailed metrics, benchmark diff, detailed benchmark) are generated from
+# the current run and/or the baseline-vs-current comparison; nothing is extracted from
+# the baseline file alone.
+
+# Compare two existing reports without re-running tests
+python scripts/compare_reports.py --baseline reports/<run-a>/json/results.json --current reports/<run-b>/json/results.json [--output-dir reports/compare_ab]
 
 # Run login tests only, headed
 pytest tests/test_login_performance.py --headed
@@ -156,6 +163,7 @@ fordefi-performance/
 │   ├── login_page.py       # Auth0 login page object
 │   └── nav_bar_page.py     # Sidebar navigation page object
 ├── scripts/
+│   ├── compare_reports.py  # Compare two report JSONs (no test run)
 │   └── save_auth_state.py  # Manual auth state generator
 ├── tests/
 │   ├── test_login_performance.py
@@ -181,7 +189,7 @@ Defined in `pytest.ini`:
 
 ## Artifacts and reports
 
-Each performance run writes to a directory under `reports/` with a local timestamp and a short random salt to avoid collisions when running in parallel (e.g. `reports/2026-03-12_18-10-34_a1b2c3d4/`). These directories are gitignored (except `.gitkeep` files).
+Each performance run writes to a directory under `reports/` with a local timestamp and a short random salt (e.g. `reports/2026-03-12_18-10-34_a1b2c3d4/`). These directories are gitignored (except `.gitkeep` files).
 
 ### Run directory layout
 
@@ -195,6 +203,24 @@ Each performance run writes to a directory under `reports/` with a local timesta
 | `reports/<run>/screenshots/` | One screenshot per flow (from last iteration when using `--iterations`). |
 | `reports/<run>/har/` | HAR file(s) for network evidence. |
 | `reports/<run>/traces/` | Playwright traces (when enabled). |
+
+In **benchmark mode** (`--mode benchmark --baseline <path>`), the run also produces:
+
+| Path | Description |
+|------|--------------|
+| `reports/<run>/json/benchmark_diff.json` | Per (page, action) comparison: baseline vs current medians, delta, % change, status. |
+| `reports/<run>/json/benchmark_diff.csv` | Same comparison as CSV. |
+| `reports/<run>/detailed_benchmark_report.html` | Per (page, action) metric tables: baseline (ms), current (ms), delta, change %, status. |
+
+### Compare two reports (no test run)
+
+To compare two existing report JSONs without re-running tests:
+
+```bash
+python scripts/compare_reports.py --baseline reports/<run-a>/json/results.json --current reports/<run-b>/json/results.json [--output-dir reports/compare_ab]
+```
+
+This writes the same benchmark outputs (diff JSON/CSV, main HTML with benchmark section, detailed benchmark report) into `--output-dir` (default: `reports/<timestamp>_compare`). Accepts `results.json` or `detailed_metrics_report.json` (list or `{"results": [...]}`).
 
 When using `--iterations` > 1, each flow is run multiple times (after discarding `--warmup` runs). Results are aggregated: one row per (page, action) with statistics over the measured samples (median, P95, P99, std dev). The detailed metrics report files reflect these aggregated statistics.
 
