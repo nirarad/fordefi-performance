@@ -927,9 +927,60 @@ Avoid unnecessary stack expansion.
 
 ---
 
+## Logging (MUST use — no print statements)
+
+All modules must use Python's built-in `logging` module. **Never use `print()` for status, progress, or diagnostic output.** This applies to test code, core framework modules, and scripts.
+
+### Setup
+
+Configure a project-wide logger in `core/logger.py`:
+
+```python
+import logging
+import sys
+
+def get_logger(name: str) -> logging.Logger:
+    logger = logging.getLogger(name)
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+            datefmt="%H:%M:%S",
+        ))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+    return logger
+```
+
+### Usage in every module
+
+```python
+from core.logger import get_logger
+
+logger = get_logger(__name__)
+
+logger.info("Navigating to %s", page_spec.path)
+logger.warning("Selector %s not found, skipping", testid)
+logger.error("Auth state expired — redirected to login page")
+logger.debug("Raw timing samples: %s", samples)
+```
+
+### Rules
+
+- Each module gets its own logger via `get_logger(__name__)`.
+- Use `logger.info` for test flow progress (page loaded, measurement complete, artifact saved).
+- Use `logger.warning` for non-fatal issues (missing optional selector, skipped action).
+- Use `logger.error` for failures (auth expired, timeout exceeded, assertion failed).
+- Use `logger.debug` for verbose data (raw samples, full response bodies) — off by default.
+- pytest captures log output automatically. Use `--log-cli-level=INFO` to see logs during test runs.
+- Scripts (`save_auth_state.py`, etc.) must also use `get_logger`, not `print()`.
+
+---
+
 ## Coding constraints for Cursor
 
 - Use Python only.
+- **Use `logging` for all output. Never use `print()`.**
 - Keep implementation pragmatic, not enterprise-heavy.
 - Prefer `Protocol` for interfaces. Fall back to `ABC` only when runtime enforcement is needed.
 - Prefer small modules and explicit type hints.

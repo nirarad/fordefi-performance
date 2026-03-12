@@ -16,8 +16,17 @@ auth/storage_state.json
 .pytest_cache/
 test-results/
 playwright-report/
-reports/
-*.html
+
+# Generated artifacts (keep .gitkeep files)
+artifacts/screenshots/*
+artifacts/traces/*
+artifacts/har/*
+artifacts/json/*
+artifacts/csv/*
+artifacts/html/*
+reports/*.md
+reports/*.html
+!**/.gitkeep
 
 # Python cache
 __pycache__/
