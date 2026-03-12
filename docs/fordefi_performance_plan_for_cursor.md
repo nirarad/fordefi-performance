@@ -89,6 +89,7 @@ If a required selector does not have a stable `data-testid`, stop and request ma
 ### Viewer role constraints
 
 Because the account is read-only:
+
 - Tests must **not** attempt write operations (create vault, send transaction, etc.)
 - All scenarios are observation-only: page loads, table rendering, search, sort, filter, sidebar open
 - If any UI element is disabled or hidden due to viewer permissions, skip it gracefully and log a note
@@ -104,14 +105,13 @@ The Fordefi preprod requires login before any page is accessible. Without authen
 Since login is simple username/password with no MFA, it can be fully automated:
 
 1. **Automated login** via a setup script or a session-scoped fixture:
-   - Navigate to the login page
-   - Fill username and password from `.env`
-   - Submit and wait for the dashboard to load
-   - Save the authenticated browser state via `context.storage_state(path="auth/storage_state.json")`
-
+  - Navigate to the login page
+  - Fill username and password from `.env`
+  - Submit and wait for the dashboard to load
+  - Save the authenticated browser state via `context.storage_state(path="auth/storage_state.json")`
 2. **All subsequent tests reuse the saved state**:
-   - Load `storage_state.json` into the browser context via pytest-playwright's `browser_context_args`
-   - This skips login for every test, saving time and avoiding repeated login flows
+  - Load `storage_state.json` into the browser context via pytest-playwright's `browser_context_args`
+  - This skips login for every test, saving time and avoiding repeated login flows
 
 ### Implementation in conftest.py
 
@@ -372,7 +372,6 @@ fordefi-perf/
   configs/
     __init__.py
     pages.py
-    scenarios.py
     thresholds.py
 
   core/
@@ -407,7 +406,9 @@ fordefi-perf/
 
   data/
     __init__.py
-    datasets.py
+    scenario_loader.py
+    scenarios/
+      vaults.csv
 
   artifacts/
     screenshots/
@@ -675,24 +676,39 @@ For each deep-dive page:
 - compare timings across runs with statistical aggregation (median, P95, std dev)
 - correlate visible slowness with console/network signals
 
-### DDT / parametrized execution
+### DDT / parametrized execution (CSV-driven)
 
-Use `pytest.mark.parametrize` to drive:
+Test data lives in CSV files under `data/scenarios/`, one file per page (e.g. `vaults.csv`). Tests load scenarios at collection time via `data/scenario_loader.py` and feed them into `pytest.mark.parametrize`.
 
-- page under test
-- action type
-- search term set
-- filter scenario
-- sort scenario
-- run mode
+CSV format:
+```csv
+action,param_key,param_value,expect_results
+search,term,My Vault,true
+search,term,nonexistent_xyz,false
+sort,column_testid,vault-name-column,asc
+filter,filter_testid,chain-filter,ethereum
+```
 
-Example dimensions:
+Lines starting with `#` are treated as comments and skipped.
 
-- pages: vaults, assets, accounts, transactions, allowances, address_book, transaction_policy, aml_policy
-- actions: load, search, sort, filter
-- datasets: name-based search, address-based search, empty-result search, common filter, common sort
+`scenario_loader.py` provides:
+- `load_scenarios(page_name)` — all rows from `data/scenarios/<page_name>.csv`
+- `load_scenarios_by_action(page_name, action)` — filtered to a single action type
 
-Keep DDT data small and intentional.
+Example parametrize usage:
+```python
+from data.scenario_loader import load_scenarios
+
+@pytest.mark.parametrize(
+    "scenario",
+    load_scenarios("vaults"),
+    ids=lambda s: s.test_id,
+)
+def test_vaults_interaction(page, scenario):
+    ...
+```
+
+Keep CSV data small and intentional. Do **not** define scenario data in Python code — all DDT data belongs in CSV.
 
 ---
 

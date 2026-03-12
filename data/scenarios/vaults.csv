@@ -1,0 +1,8 @@
+action,param_key,param_value,expect_results
+# TODO: populate after inspecting the live vaults page
+# Examples:
+# search,term,My Vault,true
+# search,term,nonexistent_vault_xyz,false
+# sort,column_testid,vault-name-column,asc
+# sort,column_testid,vault-name-column,desc
+# filter,filter_testid,chain-filter,ethereum
