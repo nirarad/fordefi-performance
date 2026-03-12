@@ -189,6 +189,17 @@ def _build_detailed_metrics_html(
 <li><strong>lcp</strong> — Largest Contentful Paint: when the largest visible content element is rendered; Core Web Vital (ms).</li>
 <li><strong>cls</strong> — Cumulative Layout Shift: measure of visual stability (unwanted layout jumps); lower is better; Core Web Vital (unitless).</li>
 </ul>
+<h3>Statistics columns (per metric)</h3>
+<p>Each metric row in the tables below reports these statistics across the measured runs:</p>
+<ul>
+<li><strong>sample_count</strong> — Number of runs included (after warm-up). Higher counts give more reliable percentiles.</li>
+<li><strong>median_ms</strong> — 50th percentile: half of the samples were faster, half slower. Robust to outliers.</li>
+<li><strong>p95_ms</strong> — 95th percentile: 95% of runs were at or below this value. Reflects typical worst-case experience.</li>
+<li><strong>p99_ms</strong> — 99th percentile: 99% of runs were at or below this value. Captures rare slow runs.</li>
+<li><strong>std_dev_ms</strong> — Standard deviation (ms). Low std dev means consistent timings; high means high variance.</li>
+<li><strong>min_ms</strong> — Fastest run (ms).</li>
+<li><strong>max_ms</strong> — Slowest run (ms).</li>
+</ul>
 <p><strong>In-page actions</strong> (sort, search, pagination, table_render) only record <em>wall_clock</em> (and optional network). TTFB, LCP, and other navigation timings apply to full page loads (e.g. nav_tab_load), not to in-page interactions.</p>
 """
     return f"""<!DOCTYPE html>

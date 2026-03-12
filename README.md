@@ -197,3 +197,32 @@ Each performance run writes to a directory under `reports/` with a local timesta
 | `reports/<run>/traces/` | Playwright traces (when enabled). |
 
 When using `--iterations` > 1, each flow is run multiple times (after discarding `--warmup` runs). Results are aggregated: one row per (page, action) with statistics over the measured samples (median, P95, P99, std dev). The detailed metrics report files reflect these aggregated statistics.
+
+### What each metric measures
+
+**Metrics (per action):**
+
+| Metric | Description |
+|--------|-------------|
+| **wall_clock** | Total time for the measured action (e.g. navigation or click), from test start to finish (ms). |
+| **ttfb** | Time to First Byte: time until the first byte of the response is received from the server (ms). |
+| **dom_content_loaded** | When the HTML has been fully loaded and parsed; DOM is ready, scripts may still run (ms). |
+| **dom_interactive** | When the document has finished loading and the DOM is ready for user interaction (ms). |
+| **load_event_end** | When the load event has finished and all resources have loaded (ms). |
+| **lcp** | Largest Contentful Paint: when the largest visible content element is rendered; Core Web Vital (ms). |
+| **cls** | Cumulative Layout Shift: measure of visual stability (unwanted layout jumps); lower is better; Core Web Vital (unitless). |
+
+**Statistics columns (per metric):**  
+Each metric row in the detailed report tables reports these statistics across the measured runs:
+
+| Column | Description |
+|--------|-------------|
+| **sample_count** | Number of runs included (after warm-up). Higher counts give more reliable percentiles. |
+| **median_ms** | 50th percentile: half of the samples were faster, half slower. Robust to outliers. |
+| **p95_ms** | 95th percentile: 95% of runs were at or below this value. Reflects typical worst-case experience. |
+| **p99_ms** | 99th percentile: 99% of runs were at or below this value. Captures rare slow runs. |
+| **std_dev_ms** | Standard deviation (ms). Low std dev means consistent timings; high means high variance. |
+| **min_ms** | Fastest run (ms). |
+| **max_ms** | Slowest run (ms). |
+
+*In-page actions* (sort, search, pagination, table_render) only record **wall_clock** (and optional network). TTFB, LCP, and other navigation timings apply to full page loads (e.g. nav_tab_load), not to in-page interactions.
