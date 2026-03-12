@@ -20,6 +20,7 @@ from core.metrics import MeasurementResult
 from core.timing import capture_navigation_timing, capture_web_vitals, measure_action
 from data.scenario_loader import NavTabScenario, load_nav_tab_scenarios
 from pages.nav_bar_page import NavBarPage
+from pages.table_page import TablePage
 
 logger = get_logger(__name__)
 
@@ -49,6 +50,7 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
     """
     tab_name = scenario.tab_name
     nav_page = NavBarPage(page)
+    table_page = TablePage(page)
     config = NavBarPage.get_tab_config(tab_name)
 
     console = ConsoleCapture()
@@ -68,7 +70,7 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
         if spinner_ms is not None:
             logger.info("%s spinner gone in %.0f ms", tab_name, spinner_ms)
 
-        rows_ms = nav_page.wait_for_table_rows(tab_name)
+        rows_ms = table_page.wait_for_table_rows(tab_name)
         if rows_ms is not None:
             logger.info("%s table rows visible in %.0f ms", tab_name, rows_ms)
 
@@ -97,16 +99,16 @@ def test_nav_tab_load(page: Page, scenario: NavTabScenario) -> None:
 
     # -- Phase 2: pagination (next page) -------------------------------------
 
-    first_row_id = nav_page.first_row_id
+    first_row_id = table_page.first_row_id
 
     if (
         config.supports_pagination
         and first_row_id is not None
-        and nav_page.can_paginate_next()
+        and table_page.can_paginate_next()
     ):
         with measure_action(f"{tab_name} pagination next-page") as pg_clock:
-            nav_page.click_next_page()
-            nav_page.wait_for_page_change(tab_name, first_row_id)
+            table_page.click_next_page()
+            table_page.wait_for_page_change(tab_name, first_row_id)
 
         take_screenshot(page, tab_slug, "pagination_next")
         logger.info("%s pagination next — wall: %.0f ms", tab_name, pg_clock[0])

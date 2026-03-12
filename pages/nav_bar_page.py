@@ -3,12 +3,16 @@
 Provides locators and navigation helpers for the main sidebar menu items.
 Each nav item uses a `data-test-id` attribute with the pattern:
     nav-bar-item-link-{path}
+
+Tab config (paths, spinner/table capabilities) lives in configs.tabs.
+Table operations (rows, pagination) are in pages.table_page.
 """
 
 from dataclasses import dataclass
 
 from playwright.sync_api import Locator, Page
 
+from configs.tabs import TabConfig, get_tab_config as _get_tab_config
 from core.logger import get_logger
 from core.timing import wait_for_selector
 
@@ -18,87 +22,6 @@ NAV_TIMEOUT = 30_000
 
 # Site-wide loading indicator; same selector for all tabs that show a spinner.
 SPINNER_SELECTOR = ".MuiCircularProgress-circleIndeterminate"
-
-
-@dataclass(frozen=True)
-class TabConfig:
-    path: str
-    supports_spinner: bool
-    supports_table: bool
-    ready_selector: str
-    supports_pagination: bool = False
-    spinner_selector: str = ""  # When empty and supports_spinner, SPINNER_SELECTOR is used.
-
-
-TABS: dict[str, TabConfig] = {
-    "Vaults": TabConfig(
-        path="/vaults",
-        supports_spinner=True,
-        supports_table=True,
-        ready_selector=".MuiDataGrid-row",
-        supports_pagination=True,
-    ),
-    "Connected Accounts": TabConfig(
-        path="/connected-accounts",
-        supports_spinner=True,
-        supports_table=True,
-        ready_selector=".MuiDataGrid-row",
-        supports_pagination=True,
-    ),
-    "Assets": TabConfig(
-        path="/assets",
-        supports_spinner=True,
-        supports_table=True,
-        ready_selector=".MuiDataGrid-row",
-        supports_pagination=True,
-    ),
-    "Transactions": TabConfig(
-        path="/transactions-history",
-        supports_spinner=True,
-        supports_table=True,
-        ready_selector=".MuiDataGrid-row",
-        supports_pagination=True,
-    ),
-    "Allowances": TabConfig(
-        path="/allowances",
-        supports_spinner=True,
-        supports_table=True,
-        ready_selector=".MuiDataGrid-row",
-        supports_pagination=True,
-    ),
-    "Address Book": TabConfig(
-        path="/address-book",
-        supports_spinner=True,
-        supports_table=True,
-        ready_selector=".MuiDataGrid-row",
-        supports_pagination=True,
-    ),
-    "Transaction Policy": TabConfig(
-        path="/transaction-policy",
-        supports_spinner=False,
-        supports_table=False,
-        ready_selector='[data-test-id="policies-rule-row-root"]',
-    ),
-    "AML Policy": TabConfig(
-        path="/aml-policy",
-        supports_spinner=False,
-        supports_table=False,
-        ready_selector='[data-test-id="policies-rule-row-root"]',
-    ),
-    "User Management": TabConfig(
-        path="/user-management",
-        supports_spinner=True,
-        supports_table=True,
-        ready_selector=".MuiDataGrid-row",
-        supports_pagination=True,
-    ),
-    "Settings": TabConfig(
-        path="/settings",
-        supports_spinner=True,
-        supports_table=False,
-        ready_selector='[data-test-id="page-wrapper-overview-title"]',
-    ),
-}
 
 
 @dataclass(frozen=True)
@@ -126,8 +49,6 @@ class NavBarSelectors:
     title_user_management: str = '[data-test-id="title-item-User Management"]'
     title_settings: str = '[data-test-id="title-item-Settings"]'
 
-    next_page_button: str = '[data-test-id="chevron-right-icon"]'
-
 
 class NavBarPage:
 
@@ -141,13 +62,7 @@ class NavBarPage:
     @staticmethod
     def get_tab_config(tab_name: str) -> TabConfig:
         """Return the TabConfig for *tab_name* or raise ValueError."""
-        config = TABS.get(tab_name)
-        if config is None:
-            raise ValueError(
-                f"Unknown tab '{tab_name}'. "
-                f"Valid tabs: {', '.join(TABS)}"
-            )
-        return config
+        return _get_tab_config(tab_name)
 
     @staticmethod
     def nav_bar_selector(path: str) -> str:
@@ -255,17 +170,6 @@ class NavBarPage:
             label=f"{tab_name} spinner",
         )
 
-    def wait_for_table_rows(self, tab_name: str, timeout: int = 60_000) -> float | None:
-        """Wait for table rows to become visible. Returns ms or None if no table."""
-        config = self.get_tab_config(tab_name)
-        if not config.supports_table or not config.ready_selector:
-            return None
-        return wait_for_selector(
-            self.page, config.ready_selector,
-            state="visible", timeout=timeout,
-            label=f"{tab_name} table rows",
-        )
-
     # -- state checks --------------------------------------------------------
 
     def is_tab_active(self, tab_name: str) -> bool:
@@ -275,32 +179,3 @@ class NavBarPage:
             f'[data-test-id="nav-bar-item-link-{config.path}-isActive"]'
         )
         return self.page.locator(active_selector).is_visible(timeout=3_000)
-
-    # -- pagination ----------------------------------------------------------
-
-    def can_paginate_next(self) -> bool:
-        """Return True if the next-page button is visible and enabled."""
-        btn = self.page.locator(self.selectors.next_page_button).first
-        if not btn.is_visible(timeout=5_000):
-            return False
-        parent = btn.locator("xpath=ancestor::button")
-        if parent.count() > 0 and parent.first.is_disabled():
-            return False
-        return True
-
-    @property
-    def first_row_id(self) -> str | None:
-        """Return the data-id of the first visible table row."""
-        row = self.page.locator(".MuiDataGrid-row").first
-        return row.get_attribute("data-id") if row.is_visible(timeout=3_000) else None
-
-    def click_next_page(self) -> None:
-        """Click the next-page pagination button."""
-        self.page.locator(self.selectors.next_page_button).first.click()
-
-    def wait_for_page_change(self, tab_name: str, prev_row_id: str, timeout: int = 60_000) -> None:
-        """Wait until the first table row has a different data-id than prev_row_id."""
-        config = self.get_tab_config(tab_name)
-        self.page.locator(
-            f'{config.ready_selector}:not([data-id="{prev_row_id}"])',
-        ).first.wait_for(state="visible", timeout=timeout)
