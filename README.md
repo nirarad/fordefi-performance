@@ -71,14 +71,14 @@ pytest
 ### Specific test files
 
 ```bash
+# Login performance
+pytest tests/test_login_performance.py
+
 # Nav-tab load (all tabs)
 pytest tests/test_nav_tab_load.py
 
-# Pagination only
+# Pagination only (subset of nav-tab load)
 pytest tests/test_nav_tab_load.py -m pagination
-
-# Login benchmarks
-pytest tests/test_login_performance.py
 ```
 
 ### By marker
@@ -135,12 +135,12 @@ pytest tests/test_login_performance.py --headed
 
 ## Test inventory
 
-| Test | File | What it measures |
-|---|---|---|
-| `test_nav_tab_load` | `tests/test_nav_tab_load.py` | DDT page load for every nav-bar tab: spinner disappearance, table render, TTFB, LCP, CLS, console errors. |
-| `test_nav_tab_pagination` | `tests/test_nav_tab_load.py` | Click next-page on each tab and measure table reload time. Skips tabs with a single page. |
-| `test_login_page_load` | `tests/test_login_performance.py` | Time from navigation to the Auth0 login form being rendered. |
-| `test_login_flow` | `tests/test_login_performance.py` | End-to-end login: page load + credential entry + post-login redirect. Reports page load and login submit times separately. |
+| Test | File | Markers | Data source | Scenarios | What it measures |
+|------|------|---------|-------------|-----------|------------------|
+| `test_login_page_load` | `tests/test_login_performance.py` | `performance` | — | — | Time from navigation to BASE_URL until the Auth0 login form (email input) is visible. Uses unauthenticated context. |
+| `test_login_flow` | `tests/test_login_performance.py` | `performance` | — | — | Full login: page load + fill credentials + two-step Auth0 flow until post-login redirect. Reports page load and login submit times. Uses unauthenticated context. |
+| `test_nav_tab_load[<tab>]` | `tests/test_nav_tab_load.py` | `performance`, `broad_scan` | `data/scenarios/nav_tabs.csv` | Vaults, Connected Accounts, Assets, Transactions, Allowances, Address Book, Transaction Policy, AML Policy, User Management, Settings | Per-tab: nav load (spinner, table rows), TTFB, LCP, CLS, console errors; then sort, search, pagination (next-page) when supported. Actions: nav_tab_load, table_render, sort, search, pagination_next (see `configs/tabs.py`). |
+| `test_single_item_load[<tab>]` | `tests/test_single_item_load.py` | `performance`, `broad_scan` | `data/scenarios/single_item_load.csv` | Vaults, Connected Accounts, Transactions | Navigate to tab, click first row, measure time until detail view (vault/account widget or transaction sidebar). |
 
 ## Project structure
 
@@ -148,7 +148,7 @@ pytest tests/test_login_performance.py --headed
 fordefi-performance/
 ├── auth/                   # Saved session state (gitignored)
 ├── configs/
-│   ├── pages.py            # Page specs (selectors, capabilities)
+│   ├── tabs.py             # Tab config (paths, selectors, supports_search/sort/pagination, single-item detail)
 │   └── thresholds.py       # Regression thresholds
 ├── core/
 │   ├── benchmark.py        # Baseline comparator
@@ -159,15 +159,19 @@ fordefi-performance/
 │   ├── protocols.py        # Protocol interfaces
 │   ├── report_writer.py    # JSON/CSV result writer
 │   └── timing.py           # perf_counter, Navigation Timing, Web Vitals
+├── data/
+│   └── scenarios/          # DDT data: nav_tabs.csv, single_item_load.csv
 ├── pages/
 │   ├── login_page.py       # Auth0 login page object
-│   └── nav_bar_page.py     # Sidebar navigation page object
+│   ├── nav_bar_page.py     # Sidebar navigation page object
+│   └── table_page.py       # Table actions (sort, search, pagination, first-row click)
 ├── scripts/
 │   ├── compare_reports.py  # Compare two report JSONs (no test run)
 │   └── save_auth_state.py  # Manual auth state generator
 ├── tests/
-│   ├── test_login_performance.py
-│   └── test_nav_tab_load.py
+│   ├── test_login_performance.py   # Login page load & full login flow (first)
+│   ├── test_nav_tab_load.py
+│   └── test_single_item_load.py
 ├── .env.example
 ├── conftest.py             # Fixtures, CLI options, auth management
 ├── pytest.ini
