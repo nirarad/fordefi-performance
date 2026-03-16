@@ -14,7 +14,7 @@ from core.evidence import take_screenshot
 from core.logger import get_logger
 from core.metrics import MeasurementResult
 from core.network_capture import NetworkCapture
-from core.timing import capture_navigation_timing, capture_web_vitals, measure_action, wait_for_selector
+from core.timing import measure_page_load, wait_for_selector
 from data.scenario_loader import SingleItemLoadScenario, load_single_item_load_scenarios
 from pages.nav_bar_page import NavBarPage
 from pages.table_page import TablePage, TransactionTablePage
@@ -35,9 +35,10 @@ def _run_single_item_load_iteration(
     console: ConsoleCapture,
 ) -> MeasurementResult:
     """Run one iteration: click first row, wait for detail, capture timings. Caller ensures list is loaded."""
-    network = NetworkCapture()
-    network.start(page)
-    with measure_action(f"{tab_name} single-item load") as wall_clock:
+    with measure_page_load(
+        page,
+        action_name=f"{tab_name} single-item load",
+    ) as measurement:
         table_page.click_first_table_row()
         wait_for_selector(
             page,
@@ -47,18 +48,14 @@ def _run_single_item_load_iteration(
             label=f"{tab_name} detail",
         )
 
-    network.stop()
-    nav = capture_navigation_timing(page)
-    vitals = capture_web_vitals(page)
-
     return MeasurementResult.from_page_load(
         tab_name,
         "single_item_load",
-        wall_clock[0],
-        nav,
-        vitals,
+        measurement["wall_clock"][0],
+        measurement["navigation"],
+        measurement["vitals"],
         console=console,
-        network_capture=network,
+        network_capture=measurement["network"],
         screenshot_path="",
     )
 

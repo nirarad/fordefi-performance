@@ -21,7 +21,7 @@ from core.evidence import take_screenshot
 from core.logger import get_logger
 from core.metrics import MeasurementResult
 from core.network_capture import NetworkCapture
-from core.timing import capture_navigation_timing, capture_web_vitals, measure_action
+from core.timing import measure_action, measure_page_load
 from configs.tabs import TabConfig
 from data.scenario_loader import NavTabScenario, load_nav_tab_scenarios
 from pages.nav_bar_page import NavBarPage
@@ -51,9 +51,7 @@ def _run_nav_tab_load_iteration(
 ]:
     """Run one iteration of nav-tab load + optional table/pagination/search/sort.
     Returns (load_result, table_result, pagination_result, search_result, sort_result)."""
-    network = NetworkCapture()
-    network.start(page)
-    with measure_action(f"{tab_name} nav-tab load") as wall_clock:
+    with measure_page_load(page, action_name=f"{tab_name} nav-tab load") as measurement:
         nav_page.navigate_to(tab_name)
 
         spinner_ms = nav_page.wait_for_spinner_gone(tab_name)
@@ -64,18 +62,14 @@ def _run_nav_tab_load_iteration(
         if rows_ms is not None:
             logger.info("%s table rows visible in %.0f ms", tab_name, rows_ms)
 
-    network.stop()
-    nav = capture_navigation_timing(page)
-    vitals = capture_web_vitals(page)
-
     load_result = MeasurementResult.from_page_load(
         tab_name,
         "nav_tab_load",
-        wall_clock[0],
-        nav,
-        vitals,
+        measurement["wall_clock"][0],
+        measurement["navigation"],
+        measurement["vitals"],
         console=console,
-        network_capture=network,
+        network_capture=measurement["network"],
         screenshot_path="",
     )
 

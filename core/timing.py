@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Generator, Literal
+from typing import Any, Generator, Literal
 
 from playwright.sync_api import Page
 
@@ -74,6 +74,34 @@ def capture_navigation_timing(page: Page) -> NavigationTiming:
         dom_interactive_ms=raw["dom_interactive"],
         load_event_end_ms=raw["load_event_end"],
     )
+
+
+@contextmanager
+def measure_page_load(
+    page: Page,
+    *,
+    action_name: str = "page_load",
+) -> Generator[dict[str, Any], None, None]:
+    """Context manager for full page-load measurements.
+
+    Starts network capture and wall-clock timing, yields a measurement dict
+    while the caller performs navigation / waits, then records navigation
+    timing and web vitals on exit.
+    """
+    from core.network_capture import NetworkCapture  # local import to avoid cycles
+
+    measurement: dict[str, Any] = {}
+    network = NetworkCapture()
+    network.start(page)
+    with measure_action(action_name) as wall_clock:
+        measurement["wall_clock"] = wall_clock
+        yield measurement
+    network.stop()
+    nav = capture_navigation_timing(page)
+    vitals = capture_web_vitals(page)
+    measurement["navigation"] = nav
+    measurement["vitals"] = vitals
+    measurement["network"] = network
 
 
 _LCP_OBSERVER_SCRIPT = """() => {

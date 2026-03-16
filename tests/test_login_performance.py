@@ -20,7 +20,10 @@ from core.evidence import take_screenshot
 from core.logger import get_logger
 from core.metrics import MeasurementResult
 from core.network_capture import NetworkCapture
-from core.timing import capture_navigation_timing, capture_web_vitals, measure_action
+from core.timing import (
+    measure_action,
+    measure_page_load,
+)
 from pages.login_page import LoginPage
 
 logger = get_logger(__name__)
@@ -61,25 +64,18 @@ def test_login_page_load(
     measured_count = 0
 
     for i in range(total):
-        network = NetworkCapture()
-        network.start(page)
-
-        with measure_action("Login page load") as wall_clock:
+        with measure_page_load(page, action_name="Login page load") as measurement:
             page.goto(BASE_URL, wait_until="commit")
-            form_ready_ms = login_page.wait_for_login_form()
-
-        network.stop()
-        nav = capture_navigation_timing(page)
-        vitals = capture_web_vitals(page)
+            login_page.wait_for_login_form()
 
         result = MeasurementResult.from_page_load(
             "Login",
             "page_load",
-            wall_clock[0],
-            nav,
-            vitals,
+            measurement["wall_clock"][0],
+            measurement["navigation"],
+            measurement["vitals"],
             console=console,
-            network_capture=network,
+            network_capture=measurement["network"],
             screenshot_path="",
         )
 
