@@ -77,6 +77,32 @@ def capture_navigation_timing(page: Page) -> NavigationTiming:
 
 
 @contextmanager
+def measure_network_capture(page: Page) -> Generator[dict[str, Any], None, None]:
+    """Context manager that wraps NetworkCapture + nav timing + web vitals.
+
+    Yields a measurement dict that will be populated with:
+      - 'network': NetworkCapture
+      - 'navigation': NavigationTiming
+      - 'vitals': WebVitals
+    after the user block completes.
+    """
+    from core.network_capture import NetworkCapture  # local import to avoid cycles
+
+    measurement: dict[str, Any] = {}
+    network = NetworkCapture()
+    network.start(page)
+    try:
+        yield measurement
+    finally:
+        network.stop()
+        nav = capture_navigation_timing(page)
+        vitals = capture_web_vitals(page)
+        measurement["navigation"] = nav
+        measurement["vitals"] = vitals
+        measurement["network"] = network
+
+
+@contextmanager
 def measure_page_load(
     page: Page,
     *,
@@ -88,20 +114,10 @@ def measure_page_load(
     while the caller performs navigation / waits, then records navigation
     timing and web vitals on exit.
     """
-    from core.network_capture import NetworkCapture  # local import to avoid cycles
-
-    measurement: dict[str, Any] = {}
-    network = NetworkCapture()
-    network.start(page)
-    with measure_action(action_name) as wall_clock:
-        measurement["wall_clock"] = wall_clock
-        yield measurement
-    network.stop()
-    nav = capture_navigation_timing(page)
-    vitals = capture_web_vitals(page)
-    measurement["navigation"] = nav
-    measurement["vitals"] = vitals
-    measurement["network"] = network
+    with measure_network_capture(page) as measurement:
+        with measure_action(action_name) as wall_clock:
+            measurement["wall_clock"] = wall_clock
+            yield measurement
 
 
 _LCP_OBSERVER_SCRIPT = """() => {

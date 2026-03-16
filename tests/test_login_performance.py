@@ -19,9 +19,9 @@ from core.console_capture import ConsoleCapture
 from core.evidence import take_screenshot
 from core.logger import get_logger
 from core.metrics import MeasurementResult
-from core.network_capture import NetworkCapture
 from core.timing import (
     measure_action,
+    measure_network_capture,
     measure_page_load,
 )
 from pages.login_page import LoginPage
@@ -123,29 +123,27 @@ def test_login_flow(
     username, password = _require_credentials()
     login_page = LoginPage(page)
 
-    network_load = NetworkCapture()
-    network_load.start(page)
-    with measure_action("Login page load (pre-login)") as page_load_clock:
-        page.goto(BASE_URL, wait_until="commit")
-        login_page.wait_for_login_form()
-    network_load.stop()
+    with measure_network_capture(page) as measurement_load:
+        with measure_action("Login page load (pre-login)") as page_load_clock:
+            page.goto(BASE_URL, wait_until="commit")
+            login_page.wait_for_login_form()
+            measurement_load["wall_clock"] = page_load_clock
 
-    network_login = NetworkCapture()
-    network_login.start(page)
-    with measure_action("Login credential submission") as login_clock:
-        login_page.login(username, password)
-        page.wait_for_url(f"{BASE_URL}/**", timeout=30_000)
-    network_login.stop()
+    with measure_network_capture(page) as measurement_login:
+        with measure_action("Login credential submission") as login_clock:
+            login_page.login(username, password)
+            page.wait_for_url(f"{BASE_URL}/**", timeout=30_000)
+            measurement_login["wall_clock"] = login_clock
 
     screenshot_path = take_screenshot(page, "login", "post_login")
 
     page_load_result = MeasurementResult.from_wall_clock(
-        "Login", "page_load", page_load_clock[0],
-        network_capture=network_load,
+        "Login", "page_load", measurement_load["wall_clock"][0],
+        network_capture=measurement_load["network"],
     )
     login_result = MeasurementResult.from_wall_clock(
-        "Login", "login_submit", login_clock[0],
-        network_capture=network_login,
+        "Login", "login_submit", measurement_login["wall_clock"][0],
+        network_capture=measurement_login["network"],
         screenshot_path=screenshot_path,
     )
     results_collector.append(page_load_result)

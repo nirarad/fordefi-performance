@@ -21,7 +21,7 @@ from core.evidence import take_screenshot
 from core.logger import get_logger
 from core.metrics import MeasurementResult
 from core.network_capture import NetworkCapture
-from core.timing import measure_action, measure_page_load
+from core.timing import measure_action, measure_network_capture, measure_page_load
 from configs.tabs import TabConfig
 from data.scenario_loader import NavTabScenario, load_nav_tab_scenarios
 from pages.nav_bar_page import NavBarPage
@@ -84,37 +84,37 @@ def _run_nav_tab_load_iteration(
 
     sort_result = None
     if config.supports_sort and table_page.is_sort_visible(column_index=1):
-        network_st = NetworkCapture()
-        network_st.start(page)
-        with measure_action(f"{tab_name} sort") as st_clock:
-            table_page.click_sort_button(column_index=1)
-            table_page.wait_for_table_after_sort(tab_name)
-        network_st.stop()
+        with measure_network_capture(page) as measurement_st:
+            with measure_action(f"{tab_name} sort") as st_clock:
+                table_page.click_sort_button(column_index=1)
+                table_page.wait_for_table_after_sort(tab_name)
+                measurement_st["wall_clock"] = st_clock
         sort_result = MeasurementResult.from_wall_clock(
             tab_name,
             "sort",
-            st_clock[0],
-            network_capture=network_st,
+            measurement_st["wall_clock"][0],
+            network_capture=measurement_st["network"],
             screenshot_path="",
         )
-        logger.info("%s sort — wall: %.0f ms", tab_name, st_clock[0])
+        logger.info("%s sort — wall: %.0f ms", tab_name, measurement_st["wall_clock"][0])
 
     search_result = None
     if config.supports_search and table_page.is_search_visible():
-        network_sr = NetworkCapture()
-        network_sr.start(page)
-        with measure_action(f"{tab_name} search") as sr_clock:
-            table_page.type_search("a")
-            table_page.wait_for_table_after_search(tab_name)
-        network_sr.stop()
+        with measure_network_capture(page) as measurement_sr:
+            with measure_action(f"{tab_name} search") as sr_clock:
+                table_page.type_search("a")
+                table_page.wait_for_table_after_search(tab_name)
+                measurement_sr["wall_clock"] = sr_clock
         search_result = MeasurementResult.from_wall_clock(
             tab_name,
             "search",
-            sr_clock[0],
-            network_capture=network_sr,
+            measurement_sr["wall_clock"][0],
+            network_capture=measurement_sr["network"],
             screenshot_path="",
         )
-        logger.info("%s search — wall: %.0f ms", tab_name, sr_clock[0])
+        logger.info(
+            "%s search — wall: %.0f ms", tab_name, measurement_sr["wall_clock"][0],
+        )
 
     first_row_id = table_page.first_row_id
     pagination_result = None
@@ -123,22 +123,24 @@ def _run_nav_tab_load_iteration(
         and first_row_id is not None
         and table_page.can_paginate_next()
     ):
-        network_pg = NetworkCapture()
-        network_pg.start(page)
-        with measure_action(f"{tab_name} pagination next-page") as pg_clock:
-            table_page.click_next_page()
-            table_page.wait_for_page_change(tab_name, first_row_id)
-
-        network_pg.stop()
+        with measure_network_capture(page) as measurement_pg:
+            with measure_action(f"{tab_name} pagination next-page") as pg_clock:
+                table_page.click_next_page()
+                table_page.wait_for_page_change(tab_name, first_row_id)
+                measurement_pg["wall_clock"] = pg_clock
 
         pagination_result = MeasurementResult.from_wall_clock(
             tab_name,
             "pagination_next",
-            pg_clock[0],
-            network_capture=network_pg,
+            measurement_pg["wall_clock"][0],
+            network_capture=measurement_pg["network"],
             screenshot_path="",
         )
-        logger.info("%s pagination next — wall: %.0f ms", tab_name, pg_clock[0])
+        logger.info(
+            "%s pagination next — wall: %.0f ms",
+            tab_name,
+            measurement_pg["wall_clock"][0],
+        )
 
     return load_result, table_result, pagination_result, search_result, sort_result
 

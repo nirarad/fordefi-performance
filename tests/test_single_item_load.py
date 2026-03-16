@@ -13,7 +13,6 @@ from core.console_capture import ConsoleCapture
 from core.evidence import take_screenshot
 from core.logger import get_logger
 from core.metrics import MeasurementResult
-from core.network_capture import NetworkCapture
 from core.timing import measure_page_load, wait_for_selector
 from data.scenario_loader import SingleItemLoadScenario, load_single_item_load_scenarios
 from pages.nav_bar_page import NavBarPage
