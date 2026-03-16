@@ -146,7 +146,38 @@ class MeasurementResult:
         network_capture: NetworkCapture | None = None,
         screenshot_path: str = "",
     ) -> MeasurementResult:
-        """Build a result populated with navigation timing, vitals, console, and network data."""
+        """Create a fully-populated measurement from a single page-load sample.
+
+        This helper is used by the performance tests to turn a one-off
+        page-load measurement into a `MeasurementResult` with:
+
+        - `wall_clock` populated from the Python-side timer
+        - navigation timing fields (`ttfb`, `dom_content_loaded`,
+          `dom_interactive`, `load_event_end`) populated from the
+          browser's Performance API
+        - web vitals (`lcp`, `cls`) populated from `WebVitals`
+        - console error metadata and network evidence attached when
+          available
+
+        Note that this only records a *single* sample into each
+        `AggregatedMetric`; callers should later merge multiple
+        instances and call `compute_all()` to derive medians and
+        percentiles.
+
+        Args:
+            page_name: Logical page identifier, e.g. "Login".
+            action: Short action name, e.g. "page_load".
+            wall_clock_ms: Wall-clock duration in milliseconds.
+            nav: Navigation timing captured from the browser.
+            vitals: Web vitals (LCP/CLS) captured from the browser.
+            console: Optional console capture with error information.
+            network_capture: Optional network capture for the load.
+            screenshot_path: Optional path to an associated screenshot.
+
+        Returns:
+            A `MeasurementResult` instance containing a single sample
+            for each metric plus any attached evidence.
+        """
         result = cls(page_name=page_name, action=action)
         result.wall_clock.samples.append(wall_clock_ms)
         result.ttfb.samples.append(nav.ttfb_ms)
@@ -176,7 +207,26 @@ class MeasurementResult:
         network_capture: NetworkCapture | None = None,
         screenshot_path: str = "",
     ) -> MeasurementResult:
-        """Build a minimal result with only a wall-clock sample (and optional network)."""
+        """Create a minimal measurement with just wall-clock (and optional network).
+
+        This is used by tests that care only about end-to-end wall-clock
+        timings (for example, login submit or table operations) where
+        browser navigation timing and web vitals are not relevant.
+
+        Args:
+            page_name: Logical page identifier, e.g. "Login".
+            action: Short action name describing the measured step,
+                such as "login_submit" or "search".
+            wall_clock_ms: Wall-clock duration in milliseconds.
+            network_capture: Optional network capture recorded while the
+                action was in progress.
+            screenshot_path: Optional path to an associated screenshot.
+
+        Returns:
+            A `MeasurementResult` instance containing a single
+            wall-clock sample and any attached network/screenshot
+            evidence. All navigation/vitals metrics remain empty.
+        """
         result = cls(page_name=page_name, action=action)
         result.wall_clock.samples.append(wall_clock_ms)
         if network_capture is not None:

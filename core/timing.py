@@ -37,13 +37,24 @@ class TimingResult:
 
 @contextmanager
 def measure_action(action_name: str) -> Generator[list[float], None, None]:
-    """Context manager that records wall-clock duration in milliseconds.
+    """Record wall-clock duration for an arbitrary block of code.
 
-    Usage:
+    The context manager yields a single-element list; on exit, the list
+    is populated with the elapsed time in milliseconds. Tests then read
+    `result[0]` to obtain the measured duration.
+
+    Example:
         with measure_action("page_load") as result:
             page.goto(url)
             page.wait_for_selector(selector)
         duration_ms = result[0]
+
+    Args:
+        action_name: Human-readable label used only for logging.
+
+    Yields:
+        A mutable list that will contain a single float value
+        representing the elapsed milliseconds once the context exits.
     """
     container: list[float] = []
     start = time.perf_counter()
@@ -78,13 +89,26 @@ def capture_navigation_timing(page: Page) -> NavigationTiming:
 
 @contextmanager
 def measure_network_capture(page: Page) -> Generator[dict[str, Any], None, None]:
-    """Context manager that wraps NetworkCapture + nav timing + web vitals.
+    """Capture network, navigation timing, and web vitals for a code block.
 
-    Yields a measurement dict that will be populated with:
-      - 'network': NetworkCapture
-      - 'navigation': NavigationTiming
-      - 'vitals': WebVitals
-    after the user block completes.
+    This helper is the backbone of the performance tests: it starts a
+    `NetworkCapture` before yielding and, once the caller's block
+    completes, attaches:
+
+    - ``measurement["network"]``: the `NetworkCapture` instance
+    - ``measurement["navigation"]``: a `NavigationTiming` snapshot
+    - ``measurement["vitals"]``: a `WebVitals` snapshot
+
+    The caller is expected to also attach a ``"wall_clock"`` entry by
+    nesting `measure_action` or `measure_page_load`.
+
+    Args:
+        page: Playwright `Page` whose network traffic and performance
+            data should be observed.
+
+    Yields:
+        A dict that will be populated with network, navigation, and
+        vitals information after the inner block finishes.
     """
     from core.network_capture import NetworkCapture  # local import to avoid cycles
 
@@ -108,11 +132,24 @@ def measure_page_load(
     *,
     action_name: str = "page_load",
 ) -> Generator[dict[str, Any], None, None]:
-    """Context manager for full page-load measurements.
+    """Measure a full page load, combining wall-clock, network, and vitals.
 
-    Starts network capture and wall-clock timing, yields a measurement dict
-    while the caller performs navigation / waits, then records navigation
-    timing and web vitals on exit.
+    This composes `measure_network_capture` and `measure_action` into a
+    single context manager used throughout the tests. On entry it
+    starts network capture and wall-clock timing; on exit it provides:
+
+    - ``measurement["wall_clock"]``: list with wall-clock ms
+    - ``measurement["network"]``: `NetworkCapture`
+    - ``measurement["navigation"]``: `NavigationTiming`
+    - ``measurement["vitals"]``: `WebVitals`
+
+    Args:
+        page: Playwright `Page` to operate on.
+        action_name: Label for logging, e.g. "Login page load".
+
+    Yields:
+        A dict into which wall-clock, network, navigation, and vitals
+        information will be written by the context manager.
     """
     with measure_network_capture(page) as measurement:
         with measure_action(action_name) as wall_clock:
@@ -201,17 +238,24 @@ def wait_for_selector(
     timeout: int = 30_000,
     label: str = "",
 ) -> float:
-    """Wait for a CSS selector to reach the given state and return elapsed ms.
+    """Wait for a CSS selector to reach a state and return elapsed ms.
+
+    This helper wraps `page.locator(selector).first.wait_for(...)`
+    with timing and logging so that tests can measure the latency of
+    key UI milestones (for example, table rows becoming visible).
 
     Args:
-        page: Playwright page instance.
+        page: Playwright `Page` instance.
         selector: Any valid CSS selector string.
-        state: Target state — 'visible', 'hidden', 'attached', 'detached'.
-        timeout: Max wait time in milliseconds.
-        label: Human-readable label for logging.
+        state: Target locator state — ``"visible"``, ``"hidden"``,
+            ``"attached"``, or ``"detached"``.
+        timeout: Maximum wait time in milliseconds before raising.
+        label: Optional human-readable label used in log messages; if
+            omitted, the raw selector is logged.
 
     Returns:
-        Elapsed milliseconds.
+        The elapsed time in milliseconds between starting the wait and
+        the selector reaching the requested state.
     """
     display_label = label or selector
     start = time.perf_counter()
